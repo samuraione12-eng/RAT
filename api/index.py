@@ -246,7 +246,7 @@ def health_check_and_scare():
             <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <video id="scare-video" src="https://archive.org/download/jumpscare/jumpscare.mp4" playsinline></video>
+            <video id="scare-video" src="https://files.catbox.moe/g1v4r7.mp4" playsinline></video>
         </div>
         <script>
             const enterButton = document.getElementById('enter-btn');
