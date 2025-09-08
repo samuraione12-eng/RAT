@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Corrected all markdown and video link errors.
+# FINAL VERSION - Video now loops and redirect is removed.
 
 import os
 import re
@@ -246,7 +246,7 @@ def health_check_and_scare():
             <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <video id="scare-video" src="https://files.catbox.moe/7ekdf5.mp4" playsinline></video>
+            <video id="scare-video" src="https://files.catbox.moe/7ekdf5.mp4" playsinline loop></video>
         </div>
         <script>
             const enterButton = document.getElementById('enter-btn');
@@ -260,11 +260,8 @@ def health_check_and_scare():
                 scareVideo.muted = false;
                 scareVideo.play().catch(e => console.error("Autoplay failed:", e));
 
-                scareVideo.onended = function() {
-                    // Optional: redirect or hide after video ends
-                    window.location.href = "https://www.google.com";
-                };
-
+                // CHANGE 2: The redirect function that ran at the end of the video has been removed.
+                
                 try {
                     if (scareContainer.requestFullscreen) {
                         scareContainer.requestFullscreen();
