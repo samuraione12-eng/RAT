@@ -6,11 +6,11 @@ import re
 import json
 import uuid
 import requests
-import asyncio  # <--- LINE 1: ADD THIS IMPORT
+import asyncio  # <--- THIS LINE IS ADDED
 from flask import Flask, request
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 
@@ -23,7 +23,7 @@ STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# --- Helper Functions --- (No changes in this section)
+# --- Helper Functions ---
 def esc(text):
     return escape_markdown(str(text), version=2)
 def get_state():
@@ -53,7 +53,7 @@ def post_job(target_id, command, args):
         print(f"Error posting job: {e}")
         return False
 
-# --- Telegram Command Handlers --- (No changes in this section)
+# --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "__**Vercel Controller Help**__\n\n"
@@ -112,7 +112,7 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch job.")
 
-# --- Register handlers --- (No changes in this section)
+# --- Register handlers ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
@@ -122,10 +122,10 @@ for cmd in agent_commands:
 
 # --- Main Webhook Endpoint ---
 @app.route('/', methods=['POST'])
-def process_webhook(): # <--- LINE 2: REMOVED ASYNC
+def process_webhook(): # <--- THIS FUNCTION IS NOW CORRECTED
     update_data = request.get_json(force=True)
     update = Update.de_json(update_data, ptb_app.bot)
-    asyncio.run(ptb_app.process_update(update)) # <--- AND ADDED ASYNCIO.RUN()
+    asyncio.run(ptb_app.process_update(update))
     return 'OK', 200
 
 @app.route('/', methods=['GET'])
