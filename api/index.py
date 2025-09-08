@@ -71,12 +71,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "*AGENT CONTROLLER HELP MENU*\n\n"
         "Use these commands to manage and control your agents\\.\n\n"
-        "--------------------------------------\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*🎯 CORE COMMANDS*\n"
         "`/list` \\- Show all active agents\n"
         "`/target <id|all|clear>` \\- Set the active agent\n"
         "`/help` \\- Display this help menu\n\n"
-        "--------------------------------------\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*💻 SYSTEM & INFO*\n"
         "`/info` \\- Get detailed system information\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
@@ -97,7 +97,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cd <directory>` \\- Change directory\n"
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n\n"
-        "--------------------------------------\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*💣 DESTRUCTIVE COMMANDS*\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
