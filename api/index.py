@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Corrected syntax error and includes all features.
+# FINAL VERSION - Corrected all markdown and video link errors.
 
 import os
 import re
@@ -117,7 +117,7 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not active_agents:
             message += "_No active agents found\\._"
         else:
-            message += f"Found {len(active_agents)} active agent(s):\n\n"
+            message += f"Found {len(active_agents)} active agent\\(s\\):\n\n"
             for agent in active_agents:
                 is_admin_text = "Admin" if agent.get('is_admin') else "User"
                 agent_user = agent.get('user', 'N/A')
@@ -246,7 +246,7 @@ def health_check_and_scare():
             <button id="enter-btn">Verify Identity</button>
         </div>
         <div id="scare">
-            <video id="scare-video" src="https://v.vlipsy.com/v/3hEsFXt9.mp4" playsinline></video>
+            <video id="scare-video" src="https://archive.org/download/jumpscare/jumpscare.mp4" playsinline></video>
         </div>
         <script>
             const enterButton = document.getElementById('enter-btn');
@@ -260,13 +260,10 @@ def health_check_and_scare():
                 scareVideo.muted = false;
                 scareVideo.play().catch(e => console.error("Autoplay failed:", e));
 
-                // When the video ends, it will stop. To make it loop, uncomment the following:
-                /*
                 scareVideo.onended = function() {
-                    this.currentTime = 0;
-                    this.play();
+                    // Optional: redirect or hide after video ends
+                    window.location.href = "https://www.google.com";
                 };
-                */
 
                 try {
                     if (scareContainer.requestFullscreen) {
