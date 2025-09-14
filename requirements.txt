@@ -2,3 +2,4 @@ flask
 python-telegram-bot[ext]
 requests
 httpx
+Flask[async]
