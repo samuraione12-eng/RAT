@@ -6,7 +6,6 @@ import httpx
 import asyncio
 import traceback
 import time
-import threading
 from flask import Flask, request
 
 from telegram import Update
@@ -32,9 +31,9 @@ async def get_state(retries=3, delay=2):
     async with httpx.AsyncClient() as client:
         for i in range(retries):
             try:
-                res = await client.get(STATE_URL, timeout=5)
+                res = await client.get(STATE_URL, timeout=10)
                 return res.json().get("selected_target", None)
-            except (httpx.ConnectTimeout, httpx.RequestError) as e:
+            except httpx.RequestError as e:
                 print(f"Attempt {i + 1}/{retries}: Connection to {STATE_URL} failed: {e}")
                 if i < retries - 1:
                     await asyncio.sleep(delay)
@@ -48,9 +47,9 @@ async def set_state(target_id, retries=3, delay=2):
     async with httpx.AsyncClient() as client:
         for i in range(retries):
             try:
-                await client.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
+                await client.post(STATE_URL, json={"selected_target": target_id}, timeout=10)
                 return True
-            except (httpx.ConnectTimeout, httpx.RequestError) as e:
+            except httpx.RequestError as e:
                 print(f"Attempt {i + 1}/{retries}: Error setting state: {e}")
                 if i < retries - 1:
                     await asyncio.sleep(delay)
@@ -66,15 +65,15 @@ async def post_job(target_id, command, args, retries=3, delay=2):
         for i in range(retries):
             try:
                 try:
-                    res = await client.get(JOBS_URL, timeout=5)
+                    res = await client.get(JOBS_URL, timeout=10)
                     current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
                 except Exception:
                     current_jobs = []
                 
                 current_jobs.append(job)
-                await client.post(JOBS_URL, json=current_jobs, timeout=5)
+                await client.post(JOBS_URL, json=current_jobs, timeout=10)
                 return True
-            except (httpx.ConnectTimeout, httpx.RequestError) as e:
+            except httpx.RequestError as e:
                 print(f"Attempt {i + 1}/{retries}: Error posting job: {e}")
                 if i < retries - 1:
                     await asyncio.sleep(delay)
@@ -171,18 +170,17 @@ for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
 # --- Main Webhook Endpoint ---
-async def process_update_async(update_data):
+@app.route('/', methods=['POST'])
+async def process_webhook():
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
+        return 'Unauthorized', 403
+    
+    update_data = await request.get_json()
     await ptb_app.initialize()
     update = Update.de_json(update_data, ptb_app.bot)
     await ptb_app.process_update(update)
     await ptb_app.shutdown()
-
-@app.route('/', methods=['POST'])
-def process_webhook():
-    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
-        return 'Unauthorized', 403
-    update_data = request.get_json(force=True)
-    threading.Thread(target=lambda: asyncio.run(process_update_async(update_data))).start()
+    
     return 'OK', 200
 
 @app.route('/', methods=['GET'])
