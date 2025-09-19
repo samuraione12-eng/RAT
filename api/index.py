@@ -1,6 +1,5 @@
-# app.py (v42.0_STABILITY_UPDATE)
-# - FIXED: /list command now correctly calculates agent online status.
-# - IMPROVED: Added more detailed logging/feedback to the /list command for easier debugging.
+# app.py (v42.1_STABILITY_FIX)
+# - FIXED: Replaced faulty 'httpx.utils.escape_html' with the standard 'html.escape' to resolve AttributeError.
 
 import os
 import re
@@ -11,6 +10,7 @@ import asyncio
 import traceback
 import base64
 import time
+import html
 from datetime import datetime
 from flask import Flask, request, Response
 
@@ -43,7 +43,6 @@ async def make_async_request(method, url, json_data=None, retries=3, delay=2):
             try:
                 res = await client.request(method.upper(), url, json=json_data, timeout=10)
                 res.raise_for_status()
-                # Handle cases where npoint returns a non-JSON response for an empty list
                 if not res.text: return []
                 return res.json()
             except httpx.RequestError as e: print(f"Attempt {attempt + 1}/{retries}: Network error for {url}: {e}"); await asyncio.sleep(delay)
@@ -71,22 +70,22 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Fetching active agents...")
     try:
         if not HEARTBEAT_URL:
-            await update.message.reply_text("❌ **Configuration Error:** `HEARTBEAT_URL` is not set on the server.", parse_mode=ParseMode.MARKDOWN_V2)
+            await update.message.reply_text("<b>Configuration Error:</b> <code>HEARTBEAT_URL</code> is not set on the server.", parse_mode=ParseMode.HTML)
             return
 
         agents = await make_async_request('GET', HEARTBEAT_URL)
         selected_target = await get_state()
         
         if agents is None:
-            await update.message.reply_text("❌ **Connection Error:** Could not connect to the heartbeat URL.", parse_mode=ParseMode.MARKDOWN_V2)
+            await update.message.reply_text("<b>Connection Error:</b> Could not connect to the heartbeat URL.", parse_mode=ParseMode.HTML)
             return
         
         if not isinstance(agents, list):
-            await update.message.reply_text("❌ **Data Error:** Heartbeat data is not a valid list. It might be empty or corrupted.", parse_mode=ParseMode.MARKDOWN_V2)
+            await update.message.reply_text("<b>Data Error:</b> Heartbeat data is not a valid list. It might be empty or corrupted.", parse_mode=ParseMode.HTML)
             return
         
         if not agents:
-            await update.message.reply_text("ℹ️ No agents have ever checked in.", parse_mode=ParseMode.MARKDOWN_V2)
+            await update.message.reply_text("ℹ️ No agents have ever checked in.", parse_mode=ParseMode.HTML)
             return
 
         agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
@@ -107,9 +106,8 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 agent_id = agent.get('id', 'N/A')
                 user = agent.get('user', 'N/A')
                 
-                # Escape HTML characters for user-provided data
-                safe_id = httpx.utils.escape_html(agent_id)
-                safe_user = httpx.utils.escape_html(user)
+                safe_id = html.escape(agent_id)
+                safe_user = html.escape(user)
                 
                 response_text += f"{is_selected} <b>ID:</b> <code>{safe_id}</code>\n"
                 response_text += f"   <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
@@ -122,7 +120,7 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response_text, parse_mode=ParseMode.HTML)
 
     except Exception as e:
-        await update.message.reply_text(f"❌ An unexpected server-side error occurred: <pre>{httpx.utils.escape_html(str(e))}</pre>", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(f"❌ An unexpected server-side error occurred: <pre>{html.escape(str(e))}</pre>", parse_mode=ParseMode.HTML)
         print(f"Error in /list command: {traceback.format_exc()}")
 
 
@@ -161,7 +159,6 @@ async def generic_command_handler(update: Update, context: ContextTypes.DEFAULT_
     else: await update.message.reply_text("❌ Error: Failed to dispatch job\\.", parse_mode=ParseMode.MARKDOWN_V2)
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # This function uses HTML parse mode as it is more reliable than MarkdownV2
     help_text = (
         "<b>AGENT CONTROLLER HELP MENU</b>\n\n"
         "---------------------------------\n"
